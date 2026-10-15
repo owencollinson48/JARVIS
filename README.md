@@ -1,5 +1,7 @@
 # JARVIS — personal command centre
 
+JARVIS 2.0 adds saved schedules, proactive notices, editable shared memory, trusted file workflows, optional paid interruptible voice, and a separate signed SMS/phone gateway. **Existing tasks and the animated HUD are preserved.** Start with [the Windows upgrade and communication guide](docs/COMMUNICATIONS.md). Paid features remain off until configured and explicitly enabled.
+
 The existing JARVIS application now has an **animated voice-first HUD** around its OpenAI chat, explicit memory and persistent tasks. Built with Python, Flask, vanilla JavaScript and SQLite. The dashboard, tasks, projects, local briefing and profile work without an API key. Real AI chat requires internet access, an OpenAI API key and API billing.
 
 [View a screenshot of the HUD with sample data](docs/hud-preview.png).
@@ -14,19 +16,19 @@ The same Python/Flask/JavaScript/SQLite stack and existing data are retained. No
 4. Click the same core again, press Escape or say **“stop listening”** / **“end conversation”** to stop. The core stays usable during a pending AI request. Stopping will not refund/cancel a backend request already sent; its reply may still appear as text, but it will not restart listening.
 5. Conversation always starts off on page load. An error, page close or 30-minute session limit ends it. A normal recognition end or no-speech timeout restarts listening while the session is on. Background tabs can continue listening with this consent, but browser/OS restrictions may suspend recognition or speech; JARVIS is not an always-running Windows voice service.
 
-**Costs/privacy:** hands-free speech automatically becomes a chat request using the existing paid OpenAI API, including the same task/memory/history context. The default daily cap remains 20 attempted AI requests. Local panel commands and Windows commands do not call OpenAI. Browser speech may send audio/text to browser/OS providers after consent. No raw audio is stored or sent to the Flask backend. There is no new OpenAI audio endpoint, wake word or voice cloning.
+**Costs/privacy:** hands-free speech automatically becomes a chat request using the existing paid OpenAI API, including the same task/memory/history context. The default daily cap remains 20 attempted AI requests. Local panel commands and Windows commands do not call OpenAI. Browser speech may send audio/text to browser/OS providers after consent. No raw audio is stored or sent to the Flask backend. This browser mode uses no OpenAI audio endpoint. Optional paid Realtime voice is separate; see the upgrade guide. No wake word or voice cloning is implemented.
 
 The assistant is instructed to be a warm, composed British-English conversation partner with occasional dry humour and concise spoken answers. This is a style instruction, not a claim to reproduce a film actor's voice. Use Saved memory to explicitly save how you prefer to be addressed or the tone you like. **Settings → Voice & accessibility → Speech voice** lists actual voices exposed by your browser. Automatic selection prefers a British voice. Voice choice is saved in this browser; exact sound depends on the installed/provider voice.
 
 If no British voice is available, on Windows open **Settings → Time & language → Speech → Manage voices / Add voices** and add **English (United Kingdom)** if offered. Restart the browser and choose a British voice in JARVIS. Windows editions and browsers expose different voices; if none is available, JARVIS clearly reports it and uses the system fallback. You can enable Speech/Read reply for typed messages independently; hands-free replies speak automatically unless you mute them.
 
-The animated HUD retains live local clock/timezone, real saved task progress/deadlines, University tasks and focused panels for Tasks, Projects, History, Memory, Briefing and Settings. Work shifts, recurring university events, reminders and notifications remain unavailable. Idle orbits are decorative; listening uses actual microphone RMS; processing follows the real pending request; speech animation follows speech events, **not measured output amplitude**. OS and manual reduced-motion preferences are respected. Text input always remains available. Space toggles conversation outside controls/text fields/dialogs; Escape stops it and closes the top dialog.
+The animated HUD retains live local clock/timezone, real saved task progress/deadlines, University tasks and focused panels for Tasks, Projects, History, Memory, Briefing and Settings. Planning now provides manually saved shifts, weekly calendar events, deduplicated notices and study suggestions; paid contact and background checks need their documented setup. Idle orbits are decorative; listening uses actual microphone RMS; processing follows the real pending request; speech animation follows speech events, **not measured output amplitude**. OS and manual reduced-motion preferences are respected. Text input always remains available. Space toggles conversation outside controls/text fields/dialogs; Escape stops it and closes the top dialog.
 
 ## Limited Windows computer controls
 
 The same local Flask backend acts as the Windows bridge. It is **off by default**. On your Windows copy, open **Settings → Computer controls** and enable it. On Linux/cloud the UI reports that Windows execution is unavailable. No actions are executed during setup or automated tests.
 
-As requested, **playback and volume commands are immediate** once enabled. **App/file/folder launches and browser searches always need a confirmation**. A structured preview appears and is spoken in hands-free mode. Say **“confirm action”** or **“cancel action”**, or use the preview buttons. “Yes” alone never authorises an action. Previews expire after two minutes; a new action replaces an older pending preview. Confirmations are single-use and cannot be replayed. Actions interrupted by a backend restart are marked outcome unknown and never retried automatically.
+As requested, **playback and volume commands are immediate** once enabled. **App/file/folder launches and browser searches need confirmation by default** (the Computer panel now supports explicit preapproval of approved targets/searches). A structured preview appears and is spoken in hands-free mode. Say **“confirm action”** or **“cancel action”**, or use the preview buttons. “Yes” alone never authorises an action. Previews expire after two minutes; a new action replaces an older pending preview. Confirmations are single-use and cannot be replayed. Actions interrupted by a backend restart are marked outcome unknown and never retried automatically.
 
 | Say or type | Behaviour |
 | --- | --- |
@@ -49,7 +51,7 @@ To approve a file/folder/app:
 
 Approvals permit only that exact resolved item, not searching through or reading folders. Supported file types: `.txt`, `.md`, `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.csv`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp3`, `.wav`, `.mp4`. Custom apps must be explicitly approved trusted `.exe` files. Shell scripts, shortcuts, network shares, arbitrary executable arguments and unrestricted shell/keyboard/mouse commands are not supported. Approval never verifies an executable's trustworthiness; choose only apps you already trust. Built-in app aliases cannot be replaced.
 
-Paths, approvals and recent execution records remain in SQLite; they are not added to model context. Local command history is displayed but excluded from AI history. There is no screenshot/file-content upload or credential/profile scanning. Launch success means Windows accepted the request, not that the application finished loading. Media success means the key was sent, not that a particular track changed. Failures and unknown results are explicit.
+Paths, approvals and recent execution records remain in SQLite; they are not added to model context. Local command history is displayed but excluded from AI history. There is no screenshot capture or credential/profile scanning. Trusted document reading and explicitly approved document summaries are available in the Computer panel. Launch success means Windows accepted the request, not that the application finished loading. Media success means the key was sent, not that a particular track changed. Failures and unknown results are explicit.
 
 ## Update your existing Windows installation
 
@@ -93,15 +95,15 @@ The backend uses the **official OpenAI Python SDK and Responses API** at `https:
 
 - **Home text field / History panel:** ask questions, plan your day, summarise deadlines or request suggested priorities. The latest exchange appears below the core; History retains the complete conversation log. Shortcut buttons fill the input; they do not submit or spend money until you click Send.
 - **Previous conversations:** all successful exchanges remain in the local conversation log across restarts. The last 12 AI messages, truncated to 4,000 characters each, are used as context; all saved memories are supplied separately. The conversation log is one continuous thread, not separate named conversations.
-- **Saved memory:** add a preference, project note or useful fact using the explicit form. You can inspect every saved memory and delete it individually.
+- **Saved memory:** add a preference, project note or useful fact using the explicit form. You can inspect, edit or delete each saved memory.
 - **Explicit chat command:** `/remember I prefer studying in the morning` saves that fact locally, even without a key. This exact command does not call OpenAI. Ordinary chat, including “please remember this”, does **not** automatically save personal facts. Use the form or `/remember`.
 - **Delete a memory:** click Delete in Saved memory and confirm. That saved row is removed. All earlier conversation is then excluded from future AI context to prevent old messages from reintroducing it. Earlier chat remains visible locally. Deletion cannot retract messages already sent to OpenAI, and does not erase text from the visible local chat log. If you later type the fact again, it can be sent again.
 - Up to 50 memories of 500 characters each. Do not store passwords, keys or other secrets.
 - Saved project memories are notes; they do not create new task categories. The existing University, Personal Life and Collinson Creative sections are unchanged.
 
-**Model-generated suggestions do not execute actions.** A separate deterministic local router handles only the computer commands listed above, with their confirmation rules. The model has no arbitrary action tools. Chat cannot edit/complete tasks, create calendar events, save facts without the explicit command, send reminders or read your files. It is instructed to distinguish saved facts from suggestions and ask when information is missing. AI can still make mistakes; verify advice. Task management remains in the existing UI.
+**Model-generated suggestions do not execute actions.** A separate deterministic local router handles only the computer commands listed above, with their confirmation rules. The model has no arbitrary action tools. Explicit local date-only task commands can create/reschedule a task. Calendar editing stays in Planning; document summaries/research and contact have separate approval controls. Paid voice has a bounded local command tool under the same permissions. It is instructed to distinguish saved facts from suggestions and ask when information is missing. AI can still make mistakes; verify advice. Task management remains in the existing UI.
 
-The daily briefing remains a fast, free summary using fixed local rules. Voice uses browser features where supported, after consent. Notifications, shift scheduling, calendar integrations and general GUI automation are **not implemented**, and are labelled accordingly.
+The daily briefing remains a fast, free summary using fixed local rules. Voice uses browser features where supported, after consent. Saved shift scheduling and notices are implemented. External calendar integrations and unrestricted GUI automation remain unavailable.
 
 ## Data sent to OpenAI
 
@@ -109,10 +111,10 @@ When you submit an AI message, including automatic voice submission during an en
 
 - Your message and local computer date.
 - Up to 100 task records, ordered with open tasks first, plus the total count and an explicit omitted count.
-- Your saved memories.
+- Your saved memories and manually saved upcoming calendar occurrences.
 - Up to the last 12 eligible AI messages as described above.
 
-No OpenAI requests are sent just to check configuration. Browser voice services may make their own requests only after you enable voice; they are separate from the backend chat integration. Legacy demo messages, local memory confirmations and local computer command exchanges are not sent as conversation history. Approved file paths and action records are not added to AI context. Tasks and memories are user data, not instructions. No API key is sent to the browser. The SDK has a 40-second timeout, automatic retries disabled, and an 800-output-token ceiling per request. Extremely long answers may fail the completeness check; no partial reply is saved.
+No OpenAI requests are sent just to check configuration. Explicitly approved paid voice streams microphone audio and context to OpenAI; approved summaries send extracted document text, and research sends your search question. See docs/COMMUNICATIONS.md for channel-specific limits and privacy. Browser voice services may make their own requests only after you enable voice; they are separate from the backend chat integration. Legacy demo messages, local memory confirmations and local computer command exchanges are not sent as conversation history. Approved file paths and action records are not added to AI context. Tasks and memories are user data, not instructions. No API key is sent to the browser. The SDK has a 40-second timeout, automatic retries disabled, and an 800-output-token ceiling per request. Extremely long answers may fail the completeness check; no partial reply is saved.
 
 ## First installation on Windows
 

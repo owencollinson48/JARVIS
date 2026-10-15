@@ -86,7 +86,7 @@ const report = text => console.log('PASS', text);
     const memory = page.locator('#memory-list .memory-row').filter({hasText: 'HUD test preference'});
     await memory.waitFor();
     assert.equal(await memory.locator('b').count(), 0);
-    await memory.getByRole('button').click();
+    await memory.getByRole('button', {name: 'Delete memory:', exact: false}).click();
     await memory.waitFor({state: 'detached'});
     await page.route('**/api/memories', route => route.fulfill({status:400,json:{error:'Mocked memory limit reached'}}));
     await page.locator('#memory-content').fill('Keep this unsent memory');

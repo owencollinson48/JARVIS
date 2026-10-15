@@ -144,7 +144,7 @@ class ComputerTests(unittest.TestCase):
         self.post('computer/targets',{'alias':'saved note','kind':'file','path':str(document)})
         token=self.chat('open spotify').json['action']['id']
         with storage.connect(self.path) as db:
-            db.execute("UPDATE computer_actions SET status='executing' WHERE id=?",(token,))
+            db.execute("UPDATE computer_actions SET status='executing',created=0 WHERE id=?",(token,))
         fresh=create_app(self.path).test_client().get('/api/computer/state').json
         self.assertTrue(fresh['enabled'])
         self.assertEqual(fresh['targets'][0]['alias'],'saved note')

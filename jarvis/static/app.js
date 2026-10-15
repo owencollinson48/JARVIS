@@ -7,13 +7,15 @@ function node(tag, cls, text) {const el=document.createElement(tag); if(cls)el.c
 function notify(message) {$('notice-text').textContent=message; $('notice').hidden=false;if($('workspace-dialog').open){$('panel-notice').textContent=message;$('panel-notice').hidden=false;}}
 $('dismiss-notice').onclick=()=>{$('notice').hidden=true;};
 async function api(path, method='GET', data) {
- const response=await fetch(path,{method,headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name="csrf-token"]').content},body:data===undefined?undefined:JSON.stringify(data)});
+ let label=path.includes('/workspace/search')?'Searching trusted files…':path.includes('/workspace/read')?'Reading approved document locally…':path.includes('/workspace/research')?'Researching the internet through OpenAI…':path.includes('/approve')?'Dispatching approved SMS/call or scheduling it…':path.includes('/workflows')&&method==='POST'?'Saving approved workflow…':path.includes('/chat')?'Processing your request…':null;
+ if(label)window.dispatchEvent(new CustomEvent('jarvis-operation',{detail:{running:true,label}}));
+ let response;try{response=await fetch(path,{method,headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name="csrf-token"]').content},body:data===undefined?undefined:JSON.stringify(data)});}finally{if(label)window.dispatchEvent(new CustomEvent('jarvis-operation',{detail:{running:false,label}}));}
  let result; try {result=await response.json();} catch {throw new Error('Unexpected server response. Restart JARVIS and refresh.');}
  if(!response.ok){const error=new Error(result.error||'The request failed. Please try again.');error.status=response.status;throw error;} return result;
 }
-async function refresh(){try{state=await api('/api/state');render();await window.JarvisComputer.refresh();}catch(error){window.JarvisHUD.backend(false);throw error;}}
+async function refresh(){try{state=await api('/api/state');render();}catch(error){window.JarvisHUD.backend(false);throw error;}const panels=await Promise.allSettled([window.JarvisComputer.refresh(),window.JarvisUpgrade.refresh()]);const failure=panels.find(x=>x.status==='rejected');if(failure)notify('Your local data loaded, but an additional panel failed: '+failure.reason.message);}
 async function action(fn){try{await fn();}catch(error){notify(error.message||'Unable to connect to JARVIS. Check that the server is running.');}}
-const panelNames={tasks:'Task manager',university:'University',work:'Work schedule',projects:'Projects',briefing:'Daily briefing',reminders:'Deadlines',chat:'Conversation history',memory:'Saved memory',settings:'Settings'};
+const panelNames={tasks:'Task manager',university:'University',work:'Work schedule',projects:'Projects',briefing:'Daily briefing',reminders:'Deadlines',chat:'Conversation history',memory:'Saved memory',settings:'Settings',planning:'Planning',autonomy:'Computer & files',communications:'Voice, phone & SMS'};
 function homeNavigation(){
  document.body.classList.remove('panel-open');
  document.querySelectorAll('.main-nav button').forEach(el=>{const active=el.dataset.page==='dashboard';el.classList.toggle('active',active);if(active)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
@@ -55,7 +57,7 @@ function render(){
  $('deadlines').replaceChildren(...(open.length?open.slice(0,3).map(t=>{const row=node('div','deadline'),box=node('div','date-box',String(new Date(t.due+'T12:00:00').getDate()));box.append(node('small','',new Date(t.due+'T12:00:00').toLocaleDateString('en-AU',{month:'short'})));const content=node('div');content.append(node('p','',t.title),node('small','',`${t.project}${t.due<today()?' · Overdue':''}`));row.append(box,content);return row;}):[node('p','empty','No upcoming deadlines.')]));
  for(const id of ['task-project','project-filter']){const selection=$(id).value;$(id).replaceChildren(...state.projects.map(p=>{const o=node('option','',p);o.value=p;return o;}));if(state.projects.includes(selection))$(id).value=selection;}
  projectCards('project-list');renderTasks();renderProjectTasks();tasksInto('university-tasks',state.tasks.filter(t=>t.project==='University'));
- $('messages').replaceChildren(...state.messages.map(m=>{const bubble=node('div',`message ${m.role}`);bubble.append(node('small','',m.role==='user'?'YOU':m.source==='openai'?'JARVIS · OPENAI':m.source==='local'?'JARVIS · LOCAL CONFIRMATION':'JARVIS · LEGACY / LOCAL MESSAGE'),document.createTextNode(m.content));return bubble;}));
+ $('messages').replaceChildren(...state.messages.map(m=>{const bubble=node('div',`message ${m.role}`);bubble.append(node('small','',m.role==='user'?`YOU · ${(m.channel||'desktop').toUpperCase()}`:m.source==='openai'?'JARVIS · OPENAI':m.source==='local'?'JARVIS · LOCAL CONFIRMATION':'JARVIS · LEGACY / LOCAL MESSAGE'),document.createTextNode(`[${m.channel||'desktop'}] ${m.content}`));return bubble;}));
  $('messages').scrollTop=$('messages').scrollHeight;
  renderMemory(); renderAIStatus();window.JarvisHUD.render(state);
  if(document.activeElement!==$('display-name'))$('display-name').value=state.settings.name;
@@ -78,7 +80,7 @@ function renderMemory(){
   detail.append(node('span','tag',memory.category.toUpperCase()),node('p','memory-text',memory.content),node('small','task-meta',`Saved ${memory.created_at} UTC`));
   const remove=node('button','','Delete');remove.setAttribute('aria-label',`Delete memory: ${memory.content}`);
   remove.onclick=()=>{if(confirm('Delete this saved memory? Earlier chat will no longer be sent as AI context, but remains visible in history.'))action(async()=>{await api(`/api/memories/${memory.id}`,'DELETE');await refresh();notify('Memory deleted. Earlier conversation is now excluded from AI context.');});};
-  row.append(detail,remove);return row;
+  const edit=node('button','','Edit');edit.onclick=()=>{const content=prompt('Edit saved memory:',memory.content);if(content!==null)action(async()=>{await api(`/api/memories/${memory.id}`,'PUT',{content,category:memory.category});await refresh();});};row.append(detail,edit,remove);return row;
  }):[node('p','empty','No saved memories. Add a fact above or use /remember in chat.')]));
 }
 document.querySelectorAll('[data-prompt]').forEach(button=>button.onclick=()=>{$('command-input').value=button.dataset.prompt;$('command-input').focus();});
@@ -88,7 +90,7 @@ $('memory-form').onsubmit=event=>{event.preventDefault();action(async()=>{
 });};
 function localCommand(content){
  const command=content.trim().replace(/^jarvis[, ]+/i,'').trim().toLowerCase();
- const aliases={'/tasks':'tasks','show tasks':'tasks','open tasks':'tasks','/briefing':'briefing','daily briefing':'briefing','show briefing':'briefing','/memory':'memory','open memory':'memory','/projects':'projects','/university':'university','/work':'work','/reminders':'reminders','/settings':'settings','/history':'chat'};
+ const aliases={'/tasks':'tasks','show tasks':'tasks','open tasks':'tasks','/briefing':'briefing','daily briefing':'briefing','show briefing':'briefing','/memory':'memory','open memory':'memory','/projects':'projects','/university':'university','/work':'work','/reminders':'reminders','/settings':'settings','/history':'chat','/planning':'planning','/computer':'autonomy','/phone':'communications'};
  if(aliases[command]){navigate(aliases[command]);return `${panelNames[aliases[command]]} opened. This command ran locally.`;}
  if(command==='/help')return 'Local commands: /tasks, /university, /work, /projects, /briefing, /reminders, /history, /memory, /settings. /remember saves an explicit fact. Computer controls: open Spotify; next song; set volume to 40 percent; search the web for a topic; open an approved name. Apps/files/searches need confirm action. Playback/volume are immediate when enabled. Hands-free mode sends recognised phrases automatically using your paid chat API.';
  if(command==='what time is it' || command==='what time is it?')return window.JarvisHUD.clockText();
@@ -120,7 +122,7 @@ async function sendMessage(input){
    const reply=state.messages.filter(message=>message.role==='assistant').at(-1);
    if(reply){window.JarvisHUD.exchange(content,reply.content);replyReady=true;}
   }catch{window.JarvisHUD.exchange(content,'Your message was saved. Refresh the page to read the reply in History.');notify('Your message was saved, but the display could not refresh. Refresh the page to see it.');}
-  $('chat-status').textContent=result.memory_saved?'Memory saved locally.':result.local?'Local computer response saved.':'Reply saved in local history.';
+  $('chat-status').textContent=result.memory_saved?'Memory saved locally.':result.local?'Local action response saved.':'Reply saved in local history.';
   $('home-status').textContent=$('chat-status').textContent;
  }catch(error){
   failure=error;
@@ -138,8 +140,10 @@ async function sendMessage(input){
 $('chat-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('chat-input')));};
 $('command-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('command-input')));};
 $('settings-form').onsubmit=event=>{event.preventDefault();action(async()=>{await api('/api/settings','PUT',{name:$('display-name').value});await refresh();notify('Settings saved on this computer.');});};
+window.JarvisUpgrade.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.JarvisComputer.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.addEventListener('jarvis-voice-submit',event=>{if(sendingChat)return;$('command-input').value=event.detail;action(()=>sendMessage($('command-input')));});
 window.addEventListener('jarvis-day-change',()=>action(refresh));
+window.addEventListener('jarvis-data-change',()=>action(refresh));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)action(refresh);});
 action(refresh);

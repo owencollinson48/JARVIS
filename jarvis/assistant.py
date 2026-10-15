@@ -1,6 +1,6 @@
 """Explicit memory management and AI chat routes, using the existing SQLite file."""
 from flask import Blueprint, current_app, jsonify, request
-from . import ai, storage, computer
+from . import ai, storage, computer, planning
 
 bp = Blueprint('assistant', __name__, url_prefix='/api')
 CATEGORIES = ('preference', 'project', 'fact')
@@ -53,6 +53,20 @@ def save_memory():
         lock.release()
 
 
+@bp.put('/memories/<int:memory_id>')
+def edit_memory(memory_id):
+    data=payload();content=text(data.get('content'),500,'Memory');category=data.get('category','fact')
+    if category not in CATEGORIES:raise ValueError('Choose preference, project or fact.')
+    lock=begin_change()
+    try:
+        with connection() as db:
+            if not db.execute('UPDATE memories SET category=?,content=? WHERE id=?',(category,content,memory_id)).rowcount:return jsonify(error='Memory not found.'),404
+            cutoff=db.execute('SELECT coalesce(max(id),0) FROM messages').fetchone()[0]
+            db.execute("INSERT INTO settings VALUES('ai_history_after',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(cutoff),))
+        return jsonify(ok=True)
+    finally:lock.release()
+
+
 @bp.delete('/memories/<int:memory_id>')
 def delete_memory(memory_id):
     lock = begin_change()
@@ -74,6 +88,11 @@ def chat():
     content = text(data.get('content'), 2000, 'Message')
     lock = begin_change()
     try:
+        with connection() as db:
+            planned = planning.task_command(db, content)
+            if planned:
+                db.executemany('INSERT INTO messages(role,content,source,channel) VALUES(?,?,?,?)',[('user',content,'local','desktop'),('assistant',planned['reply'],'local','desktop')])
+        if planned:return jsonify(ok=True,local=True,**planned)
         command = computer.handle(content, data.get('action_id'))
         if command:
             with connection() as db:

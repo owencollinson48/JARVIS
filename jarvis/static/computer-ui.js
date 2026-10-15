@@ -6,11 +6,12 @@ window.JarvisComputer = (() => {
   const text = (tag, value, cls) => {const el=document.createElement(tag);el.textContent=value;if(cls)el.className=cls;return el;};
   function render(data) {
     selected=data.pending;
+    get('approval-status').textContent=selected?'Waiting for your approval: '+selected.preview:'No computer action awaiting approval';
     get('computer-preview').hidden=!selected;
     get('computer-preview-text').textContent=selected?.preview||'';
     get('computer-enabled').checked=data.enabled;
     get('computer-enabled').disabled=!data.supported;
-    get('computer-platform').textContent=data.supported ? `Windows controls ${data.enabled?'enabled':'off'}. Playback and volume are immediate; apps/files/searches need confirmation.` : 'This running machine is not Windows. Configure and test computer controls on your Windows PC.';
+    get('computer-platform').textContent=data.supported ? `Windows controls ${data.enabled?'enabled':'off'}. Playback and volume are immediate; other commands follow your saved approval rules.` : 'This running machine is not Windows. Configure and test computer controls on your Windows PC.';
     get('computer-target-form').querySelector('button').disabled=!data.supported;
     get('computer-targets').replaceChildren(...data.targets.map(target=>{
       const row=text('div','', 'memory-row'),detail=text('div','');
@@ -40,7 +41,7 @@ window.JarvisComputer = (() => {
       });
       get('computer-target-form').onsubmit=event=>{event.preventDefault();hooks.action(async()=>{
         await hooks.api('/api/computer/targets','POST',{alias:get('target-alias').value,kind:get('target-kind').value,path:get('target-path').value});
-        get('computer-target-form').reset();await reload();hooks.notify('Target approved locally. Opening it will still require confirmation.');
+        get('computer-target-form').reset();await reload();hooks.notify('Target approved locally. Opening it follows your saved confirmation preference.');
       });};
     },
     refresh:reload

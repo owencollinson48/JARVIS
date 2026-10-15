@@ -99,6 +99,7 @@ window.JarvisHUD = (() => {
     submit: text => window.dispatchEvent(new CustomEvent('jarvis-voice-submit', {detail:text}))
   });
   function toggleMic() {
+    if(window.JarvisRealtime?.active){window.JarvisRealtime.stop();return;}
     if (conversation.active) {conversation.stop();return;}
     if (busy) {showError('Wait for the current request to finish before starting another conversation.');return;}
     if (get('command-input').value.trim() && !confirm('Starting hands-free conversation will replace your unsent draft with speech. Continue?')) return;
@@ -128,7 +129,7 @@ window.JarvisHUD = (() => {
     voice.muted ? askConsent(() => mute(false)) : mute(true);
   };
   get('speak-reply').onclick = () => {if (lastReply && !busy) askConsent(() => voice.speak(lastReply));};
-  get('stop-audio').onclick = () => {conversation.stop(); setState('idle', 'Audio stopped.');};
+  get('stop-audio').onclick = () => {window.JarvisRealtime?.stop();conversation.stop(); setState('idle', 'Audio stopped.');};
   get('auto-speak').onchange = event => {
     if (event.target.checked) {
       if (!voice.outputSupported) {event.target.checked = false; showError('Speech output is unavailable in this browser.'); return;}

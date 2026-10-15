@@ -29,12 +29,30 @@ def initialize(path):
         CREATE TABLE IF NOT EXISTS computer_targets(alias TEXT PRIMARY KEY,kind TEXT NOT NULL,path TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS computer_actions(id TEXT PRIMARY KEY,payload TEXT NOT NULL,preview TEXT NOT NULL,
             status TEXT NOT NULL,created REAL NOT NULL,expires REAL NOT NULL,result TEXT);
+        CREATE TABLE IF NOT EXISTS calendar_events(id INTEGER PRIMARY KEY,title TEXT NOT NULL,kind TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,timezone TEXT NOT NULL,recurrence TEXT NOT NULL DEFAULT 'none',until_date TEXT,break_minutes INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS notices(id INTEGER PRIMARY KEY,dedupe TEXT UNIQUE,category TEXT,body TEXT,task_id INTEGER,created TEXT,status TEXT NOT NULL DEFAULT 'unread');
+        CREATE TABLE IF NOT EXISTS channel_context(channel TEXT PRIMARY KEY,task_id INTEGER);
+        CREATE TABLE IF NOT EXISTS communication_jobs(id TEXT PRIMARY KEY,channel TEXT,body TEXT,task_id INTEGER,due TEXT,status TEXT,provider_sid TEXT,created TEXT,result TEXT,approved INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS communication_usage(day TEXT,channel TEXT,attempts INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,channel));
+        CREATE TABLE IF NOT EXISTS webhook_receipts(sid TEXT PRIMARY KEY,status TEXT,created TEXT);
+        CREATE TABLE IF NOT EXISTS trusted_roots(alias TEXT PRIMARY KEY,path TEXT NOT NULL,allow_read INTEGER NOT NULL DEFAULT 0,allow_move INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS workflows(name TEXT PRIMARY KEY,steps TEXT NOT NULL,preapproved INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS realtime_sessions(id TEXT PRIMARY KEY,provider_call TEXT,started REAL,status TEXT);
+        CREATE TABLE IF NOT EXISTS realtime_tool_calls(session TEXT,call_id TEXT,PRIMARY KEY(session,call_id));
+        CREATE TABLE IF NOT EXISTS realtime_events(session TEXT,event TEXT,PRIMARY KEY(session,event));
         CREATE TABLE IF NOT EXISTS ai_usage(day TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0);
         ''')
-        db.execute("UPDATE computer_actions SET status='unknown',result='JARVIS restarted during execution. Outcome is unknown; no retry was made.' WHERE status='executing'")
+        db.execute("UPDATE computer_actions SET status='unknown',result='Stale execution; outcome unknown. No retry was made.' WHERE status='executing' AND created<strftime('%s','now')-300")
+        if 'dispatch_started' not in {r[1] for r in db.execute('PRAGMA table_info(communication_jobs)')}:
+            db.execute('ALTER TABLE communication_jobs ADD COLUMN dispatch_started REAL')
+        if 'quota_reserved' not in {r[1] for r in db.execute('PRAGMA table_info(communication_jobs)')}:
+            db.execute('ALTER TABLE communication_jobs ADD COLUMN quota_reserved INTEGER NOT NULL DEFAULT 0')
+        db.execute("UPDATE communication_jobs SET status='unknown',result='Stale provider dispatch; not retried.' WHERE status='sending' AND (dispatch_started IS NULL OR dispatch_started<strftime('%s','now')-120)")
         columns = {row[1] for row in db.execute('PRAGMA table_info(messages)')}
         if 'source' not in columns:
             db.execute("ALTER TABLE messages ADD COLUMN source TEXT NOT NULL DEFAULT 'demo'")
+        if 'channel' not in columns:
+            db.execute("ALTER TABLE messages ADD COLUMN channel TEXT NOT NULL DEFAULT 'desktop'")
         if not db.execute("SELECT 1 FROM settings WHERE key='seeded'").fetchone():
             today = date.today()
             samples = [('Outline next university assignment', 0, 'High', 'University'),

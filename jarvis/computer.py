@@ -31,7 +31,7 @@ def pending(db):
 def state(db):
     return dict(supported=windows.supported(), enabled=enabled(db), builtins=BUILTINS,
                 targets=[dict(row) for row in db.execute('SELECT alias,kind,path FROM computer_targets ORDER BY alias')],
-                pending=pending(db), recent=[dict(row) for row in db.execute('SELECT id,preview,status,result FROM computer_actions ORDER BY created DESC LIMIT 10')])
+                pending=pending(db), recent=[dict(row) for row in db.execute('SELECT id,preview,status,result FROM computer_actions WHERE preview LIKE ? ORDER BY created DESC LIMIT 100',('%'+request.args.get('q','')[:100]+'%',))])
 
 
 def normalize(content):
@@ -104,7 +104,25 @@ def run(action_id):
             return dict(ok=False, reply=str(error))
         db.execute("UPDATE computer_actions SET status='executing' WHERE id=?", (action_id,))
     try:
-        result = windows.execute(action, target)
+        if action['kind'] in ('root_open','move'):
+            from . import workspace
+            with connect() as db:
+                if action['kind']=='move':result=workspace.move(db,action)
+                else:
+                    _,path=workspace.root_path(db,action['root'],action['relative'])
+                    if path.suffix.lower() not in FILE_TYPES:raise ValueError('Unsupported file type.')
+                    result=windows.execute({'kind':'open','alias':path.name},{'kind':'file','path':str(path)})
+        elif action['kind']=='workflow':
+            with connect() as db:workflow=db.execute('SELECT steps FROM workflows WHERE name=?',(action['name'],)).fetchone()
+            if not workflow:raise ValueError('Workflow removed.')
+            results=[]
+            for step in json.loads(workflow[0]):
+                with connect() as db:
+                    if not enabled(db):raise ValueError('Emergency stop or controls disabled.')
+                    selected=target_for(db,step['alias']) if step['kind']=='open' else None
+                results.append(windows.execute(step,selected))
+            result='Workflow finished: '+' '.join(results)
+        else:result = windows.execute(action, target)
         status = 'executed'
     except (OSError, ValueError, KeyError):
         result = 'Windows could not complete the approved action. Check that the app or file exists and is accessible. No automatic retry was made.'
@@ -129,7 +147,8 @@ def handle(content, action_id=None):
                 changed = db.execute("UPDATE computer_actions SET status='cancelled',result='Cancelled by user.' WHERE id=? AND status='pending'", (action_id,)).rowcount
             result = dict(ok=True, reply='Action cancelled.' if changed else 'That action is no longer pending.')
         return dict(ok=True, local=True, reply=result['reply'])
-    action = parse(content)
+    workflow_match=re.fullmatch(r'run workflow ([a-z][a-z0-9 ]{0,39})',command)
+    action = dict(kind='workflow',name=workflow_match[1]) if workflow_match else parse(content)
     if not action:
         return None
     if action['kind'] == 'invalid':
@@ -139,13 +158,20 @@ def handle(content, action_id=None):
             return dict(ok=True, local=True, reply='Computer controls require JARVIS running on your Windows PC. This machine cannot execute them.')
         if not enabled(db):
             return dict(ok=True, local=True, reply='Computer controls are off. Enable them in Settings → Computer controls. No action was executed.')
-        if action['kind'] == 'open':
+        preapproved=False
+        if action['kind']=='workflow':
+            workflow=db.execute('SELECT preapproved FROM workflows WHERE name=?',(action['name'],)).fetchone()
+            if not workflow:return dict(ok=True,local=True,reply='Approve that workflow in the Autonomy panel first.')
+            preapproved=bool(workflow[0]);preview='Run approved workflow: '+action['name']
+        elif action['kind'] == 'open':
             try:
                 target_for(db, action['alias'])
             except ValueError as error:
                 return dict(ok=True, local=True, reply=str(error))
+            preapproved=bool(db.execute("SELECT 1 FROM settings WHERE key='auto_open' AND value='1'").fetchone())
             preview = f"Open approved target: {action['alias']}"
         elif action['kind'] == 'search':
+            preapproved=bool(db.execute("SELECT 1 FROM settings WHERE key='auto_open' AND value='1'").fetchone())
             preview = 'Search Google in your default browser for: '+action['query']
         elif action['kind'] == 'volume':
             preview = f"Set Windows master volume to {action['percent']} percent" if 'percent' in action else f"Adjust Windows master volume by {action['delta']} percentage points"
@@ -156,7 +182,7 @@ def handle(content, action_id=None):
         db.execute("UPDATE computer_actions SET status='cancelled',result='Replaced by newer request.' WHERE status='pending'")
         db.execute('INSERT INTO computer_actions(id,payload,preview,status,created,expires) VALUES(?,?,?,\'pending\',?,?)',
                    (token, json.dumps(action), preview, now, now+120))
-    if action['kind'] in ('media', 'volume'):
+    if action['kind'] in ('media', 'volume') or preapproved:
         return dict(ok=True, local=True, reply=run(token)['reply'])
     return dict(ok=True, local=True, reply=preview+'. Say “confirm action” to execute, or “cancel action”.', action=dict(id=token,preview=preview,expires=now+120))
 

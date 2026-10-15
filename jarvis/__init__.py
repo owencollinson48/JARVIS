@@ -8,6 +8,10 @@ from flask import Flask, jsonify, render_template, request, session
 from . import storage, ai
 from .assistant import bp as assistant_blueprint
 from .computer import bp as computer_blueprint
+from .planning import bp as planning_blueprint
+from .communications import bp as communications_blueprint, public as telephony_blueprint
+from . import relay, communications, realtime
+from .workspace import bp as workspace_blueprint
 
 PROJECTS = ['University', 'Personal Life', 'Collinson Creative']
 
@@ -21,9 +25,17 @@ def create_app(database=None):
     app.extensions['assistant_lock'] = Lock()
     app.register_blueprint(assistant_blueprint)
     app.register_blueprint(computer_blueprint)
+    app.register_blueprint(planning_blueprint)
+    app.register_blueprint(communications_blueprint)
+    app.register_blueprint(workspace_blueprint)
+    app.register_blueprint(realtime.bp)
+    app.register_blueprint(telephony_blueprint)
+    relay.register(app)
 
     @app.before_request
     def protect_local_app():
+        if request.blueprint=='telephony' or request.endpoint=='relay_socket':
+            return communications.validate_signature()
         if request.host.split(':')[0] not in ('localhost', '127.0.0.1'):
             return jsonify(error='Only local access is supported.'), 403
         if request.method in ('POST', 'PUT', 'DELETE'):
@@ -103,6 +115,14 @@ def create_app(database=None):
     def database_error(error):
         app.logger.exception('Database operation failed')
         return jsonify(error='The local database is unavailable. Check disk space and restart JARVIS.'), 503
+
+    @app.errorhandler(OSError)
+    def file_error(error):
+        return jsonify(error='The local file is unavailable or Windows denied access. Check the approved path and permissions.'),400
+
+    @app.errorhandler(ai.AssistantError)
+    def assistant_error(error):
+        return jsonify(error=str(error)),error.status
 
     @app.errorhandler(413)
     def too_large(error):
