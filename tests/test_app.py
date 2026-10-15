@@ -1,11 +1,15 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from jarvis import create_app
 
 
 class JarvisTests(unittest.TestCase):
     def setUp(self):
+        self.environment = patch.dict('os.environ', {'OPENAI_API_KEY': '', 'OPENAI_MODEL': 'gpt-4.1-mini', 'JARVIS_AI_DAILY_LIMIT': '20'})
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name) / 'test.db'
         self.app = create_app(self.path)
@@ -42,12 +46,13 @@ class JarvisTests(unittest.TestCase):
         self.assertEqual(self.client.delete('/api/tasks/9999', headers=self.headers).status_code, 404)
 
     def test_chat_and_settings_persist(self):
-        self.assertEqual(self.client.post('/api/chat', json={'content':'Hello'}, headers=self.headers).status_code, 200)
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key-not-real'}), patch('jarvis.ai.answer', return_value='A tested AI reply'):
+            self.assertEqual(self.client.post('/api/chat', json={'content':'Hello'}, headers=self.headers).status_code, 200)
         self.assertEqual(self.client.put('/api/settings', json={'name':'Owen'}, headers=self.headers).status_code, 200)
         fresh = create_app(self.path).test_client().get('/api/state').json
         self.assertEqual(fresh['settings']['name'], 'Owen')
         self.assertEqual(fresh['messages'][-2]['content'], 'Hello')
-        self.assertIn('Local demo', fresh['messages'][-1]['content'])
+        self.assertEqual(fresh['messages'][-1]['content'], 'A tested AI reply')
         self.assertEqual(self.client.post('/api/chat', json={'content':''}, headers=self.headers).status_code, 400)
         self.assertEqual(self.client.put('/api/settings', json={'name':''}, headers=self.headers).status_code, 400)
 

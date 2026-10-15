@@ -1,10 +1,12 @@
 """Local JARVIS application factory and HTTP routes."""
 import secrets
 import sqlite3
+from threading import Lock
 from datetime import date
 from pathlib import Path
 from flask import Flask, jsonify, render_template, request, session
-from . import storage
+from . import storage, ai
+from .assistant import bp as assistant_blueprint
 
 PROJECTS = ['University', 'Personal Life', 'Collinson Creative']
 
@@ -15,6 +17,8 @@ def create_app(database=None):
                       SESSION_COOKIE_SAMESITE='Strict')
     app.config['DATABASE'] = str(database or Path(__file__).resolve().parent.parent / 'data' / 'jarvis.db')
     storage.initialize(app.config['DATABASE'])
+    app.extensions['assistant_lock'] = Lock()
+    app.register_blueprint(assistant_blueprint)
 
     @app.before_request
     def protect_local_app():
@@ -34,7 +38,9 @@ def create_app(database=None):
         with storage.connect(app.config['DATABASE']) as db:
             return jsonify(tasks=[dict(r) for r in db.execute('SELECT * FROM tasks ORDER BY completed, due, id')],
                            messages=[dict(r) for r in db.execute('SELECT * FROM messages ORDER BY id')],
-                           settings=dict(db.execute('SELECT key,value FROM settings').fetchall()), projects=PROJECTS)
+                           settings=dict(db.execute('SELECT key,value FROM settings').fetchall()), projects=PROJECTS,
+                           memories=[dict(r) for r in db.execute('SELECT * FROM memories ORDER BY id DESC')],
+                           ai=ai.status(db))
 
     def task_values():
         data = request.get_json(silent=True)
@@ -75,18 +81,6 @@ def create_app(database=None):
         with storage.connect(app.config['DATABASE']) as db:
             if not db.execute('DELETE FROM tasks WHERE id=?', (task_id,)).rowcount:
                 return jsonify(error='Task no longer exists.'), 404
-        return jsonify(ok=True)
-
-    @app.post('/api/chat')
-    def chat():
-        data = request.get_json(silent=True) or {}
-        content = data.get('content') if isinstance(data, dict) else None
-        if not isinstance(content, str) or not 1 <= len(content.strip()) <= 2000:
-            raise ValueError('Enter a message between 1 and 2000 characters.')
-        with storage.connect(app.config['DATABASE']) as db:
-            count = db.execute('SELECT count(*) FROM tasks WHERE completed=0').fetchone()[0]
-            reply = f'Local demo · You have {count} open tasks. Use the task manager to add or update your plan. AI conversations, reminders and computer automation are not connected yet.'
-            db.executemany('INSERT INTO messages(role,content) VALUES(?,?)', [('user', content.strip()), ('assistant', reply)])
         return jsonify(ok=True)
 
     @app.put('/api/settings')

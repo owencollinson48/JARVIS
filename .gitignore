@@ -4,3 +4,9 @@ __pycache__/
 data/
 .browser-cache/
 JARVIS-Windows.zip
+
+# API credentials must never be committed
+.env
+.env.*
+.ui-check/
+.npm-cache/
