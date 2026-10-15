@@ -1,6 +1,6 @@
 """Explicit memory management and AI chat routes, using the existing SQLite file."""
 from flask import Blueprint, current_app, jsonify, request
-from . import ai, storage
+from . import ai, storage, computer
 
 bp = Blueprint('assistant', __name__, url_prefix='/api')
 CATEGORIES = ('preference', 'project', 'fact')
@@ -70,9 +70,15 @@ def delete_memory(memory_id):
 
 @bp.post('/chat')
 def chat():
-    content = text(payload().get('content'), 2000, 'Message')
+    data = payload()
+    content = text(data.get('content'), 2000, 'Message')
     lock = begin_change()
     try:
+        command = computer.handle(content, data.get('action_id'))
+        if command:
+            with connection() as db:
+                db.executemany('INSERT INTO messages(role,content,source) VALUES(?,?,?)', [('user',content,'local'),('assistant',command['reply'],'local')])
+            return jsonify(command)
         if content.lower() == '/remember' or content.lower().startswith('/remember '):
             fact = text(content[len('/remember'):], 500, 'Memory after /remember')
             with connection() as db:

@@ -4,6 +4,7 @@ window.JarvisHUD = (() => {
   const get = id => document.getElementById(id);
   const svgNS = 'http://www.w3.org/2000/svg';
   let backendOnline = false, backendChecked = false, busy = false, lastAI = null, aiError = false;
+  let conversation;
   let consent = false, consentPending = null, lastReply = '', hasExchange = false;
   const svgNode = (tag, attrs) => {
     const element = document.createElementNS(svgNS, tag);
@@ -41,7 +42,7 @@ window.JarvisHUD = (() => {
   }
   clock();
   const timer = setInterval(clock, 1000);
-  window.addEventListener('pagehide', () => {clearInterval(timer); voice.stop();});
+  window.addEventListener('pagehide', () => {clearInterval(timer); conversation.stop();});
 
   function setState(name, description) {
     if (busy && name !== 'thinking' && name !== 'offline') return;
@@ -49,13 +50,20 @@ window.JarvisHUD = (() => {
     get('reactor').dataset.state = name;
     get('reactor-state').textContent = {idle: 'READY', listening: 'LISTENING', thinking: 'PROCESSING', speaking: 'SPEAKING', error: 'ATTENTION', offline: 'BACKEND OFFLINE'}[name];
     get('reactor-description').textContent = description || 'Your next move starts here.';
-    get('voice-core').setAttribute('aria-label', voice?.listening || voice?.starting ? 'Stop voice input' : 'Start voice input');
-    get('mic-toggle').setAttribute('aria-label', voice?.listening || voice?.starting ? 'Stop voice input' : 'Start voice input');
-    get('mic-toggle').setAttribute('aria-pressed', String(Boolean(voice?.listening || voice?.starting)));
-    get('core-action').textContent = name === 'listening' ? 'CLICK TO STOP' : name === 'thinking' ? 'PLEASE WAIT' : 'CLICK TO TALK';
+    syncSession();
     get('stop-audio').disabled = !(voice?.listening || voice?.starting || voice?.speaking || voice?.utterance);
   }
+  function syncSession() {
+    const active = Boolean(conversation?.active);
+    get('voice-core').setAttribute('aria-label', active ? 'Turn off hands-free conversation' : 'Turn on hands-free conversation');
+    get('voice-core').setAttribute('aria-pressed', String(active));
+    get('core-action').textContent = active ? 'END CONVERSATION' : 'START CONVERSATION';
+    get('session-status').textContent = active ? 'CONVERSATION ON · AUTO SEND' : 'CONVERSATION OFF';
+    get('session-status').dataset.active = String(active);
+  }
   function showError(message) {
+    if (conversation?.active) conversation.stop();
+    setState('error', message);
     get('home-status').textContent = message;
     get('last-response').textContent = message;
     if (get('workspace-dialog').open) {get('panel-notice').textContent = message;get('panel-notice').hidden = false;}
@@ -74,26 +82,33 @@ window.JarvisHUD = (() => {
       get('mic-meter').value = level;
       bars.forEach((bar, index) => {bar.style.transform = `scaleY(${.06+(values[index]||0)*.94})`;});
     },
+    ended: () => conversation?.resume(),
+    speechEnded: () => conversation?.speechEnded(),
     transcript: (text, final) => {
       get('last-utterance').textContent = `${final?'Voice draft':'Hearing'}: ${text}`;
       if (final) {
         get('command-input').value = text;
-        get('home-status').textContent = 'Voice draft ready. Review it, then choose Send. Nothing has been submitted.';
+        if (conversation?.active) conversation.heard(text);
+        else get('home-status').textContent = 'Voice draft ready. Review it before sending.';
       }
     }
   });
+  conversation = new window.JarvisConversation(voice, {
+    changed: active => {if (!active) {mute(true);get('auto-speak').checked=false;}else mute(false);syncSession();},
+    error: showError,
+    submit: text => window.dispatchEvent(new CustomEvent('jarvis-voice-submit', {detail:text}))
+  });
   function toggleMic() {
-    if (busy) {showError('Wait for the current request to finish before starting the microphone.'); return;}
-    if (voice.listening || voice.starting) {voice.stopListening(); return;}
-    if (get('command-input').value.trim() && !confirm('Voice dictation will replace your current unsent text when a transcript is ready. Continue?')) return;
-    if (!voice.inputSupported) {voice.start(); return;}
-    askConsent(() => { if (!busy && !document.hidden) voice.start(); });
+    if (conversation.active) {conversation.stop();return;}
+    if (busy) {showError('Wait for the current request to finish before starting another conversation.');return;}
+    if (get('command-input').value.trim() && !confirm('Starting hands-free conversation will replace your unsent draft with speech. Continue?')) return;
+    if (!voice.inputSupported || !voice.outputSupported) {conversation.start();return;}
+    askConsent(() => {if (!busy) conversation.start();});
   }
   get('voice-core').onclick = toggleMic;
-  get('mic-toggle').onclick = toggleMic;
   get('allow-voice').onclick = () => {
     consent = true;
-    get('speech-status').textContent = voice.inputSupported ? 'Consent granted · microphone opens only on request' : 'Voice input unsupported · text available';
+    get('speech-status').textContent = voice.inputSupported ? 'Voice consent granted for this page' : 'Voice input unsupported · text available';
     const callback = consentPending;
     consentPending = null;
     get('voice-consent').close();
@@ -103,7 +118,7 @@ window.JarvisHUD = (() => {
   get('voice-consent').addEventListener('close', () => {consentPending = null;});
   function mute(muted) {
     voice.muted = muted;
-    if (muted) voice.stopSpeaking();
+    if (muted) {voice.stopSpeaking();if(conversation?.active)conversation.resume();}
     get('mute-toggle').textContent = muted ? 'Speech off' : 'Speech on';
     get('mute-toggle').setAttribute('aria-pressed', String(muted));
     get('speak-reply').disabled = muted || !lastReply || !voice.outputSupported || busy;
@@ -113,7 +128,7 @@ window.JarvisHUD = (() => {
     voice.muted ? askConsent(() => mute(false)) : mute(true);
   };
   get('speak-reply').onclick = () => {if (lastReply && !busy) askConsent(() => voice.speak(lastReply));};
-  get('stop-audio').onclick = () => {voice.stop(); setState('idle', 'Audio stopped.');};
+  get('stop-audio').onclick = () => {conversation.stop(); setState('idle', 'Audio stopped.');};
   get('auto-speak').onchange = event => {
     if (event.target.checked) {
       if (!voice.outputSupported) {event.target.checked = false; showError('Speech output is unavailable in this browser.'); return;}
@@ -126,9 +141,23 @@ window.JarvisHUD = (() => {
   get('speech-status').textContent = support;
   get('voice-capabilities').textContent = `${support}. Speech output ${voice.outputSupported?'available':'unsupported'}. No microphone opens until you choose to enable it.`;
 
+  try {voice.voiceURI = localStorage.getItem('jarvis.voiceURI') || '';} catch {}
+  function updateVoices() {
+    const select = get('voice-select');
+    select.replaceChildren(new Option('British English · automatic', ''));
+    const voices = voice.outputSupported ? speechSynthesis.getVoices() : [];
+    voices.filter(item => item.lang.startsWith('en')).forEach(item => select.add(new Option(`${item.name} · ${item.lang}${item.localService?' · installed':''}`, item.voiceURI)));
+    if ([...select.options].some(option => option.value === voice.voiceURI)) select.value=voice.voiceURI;
+    const chosen=voices.find(item=>item.voiceURI===select.value);
+    get('voice-choice-status').textContent = chosen ? `Selected: ${chosen.name} (${chosen.lang}). Exact tone depends on this voice.` : voices.some(item=>/^en[-_]GB$/i.test(item.lang)) ? 'British English voice available. Automatic selection prefers a British voice; exact tone varies by provider.' : 'No British voice is currently exposed by this browser. Install an English (United Kingdom) speech voice in Windows Settings → Time & language → Speech, then restart the browser. The system voice is the fallback.';
+  }
+  get('voice-select').onchange=event=>{voice.voiceURI=event.target.value;try{localStorage.setItem('jarvis.voiceURI',voice.voiceURI);}catch{}updateVoices();};
+  if(voice.outputSupported)speechSynthesis.addEventListener?.('voiceschanged',updateVoices);
+  updateVoices();
+
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-      voice.stop();
+      conversation.stop();
       const dialogs = ['voice-consent', 'task-dialog', 'workspace-dialog'];
       const top = dialogs.map(get).find(dialog => dialog.open);
       if (top) {event.preventDefault(); top.close();}
@@ -141,7 +170,7 @@ window.JarvisHUD = (() => {
   });
   document.addEventListener('visibilitychange', () => {
     document.body.classList.toggle('page-hidden', document.hidden);
-    if (document.hidden) voice.stop(); else clock();
+    if (document.hidden && !conversation.active) voice.stop();else if(!document.hidden)clock();
   });
 
   function renderAI(ai) {
@@ -184,15 +213,14 @@ window.JarvisHUD = (() => {
       get('footer-state').textContent = online ? 'LOCAL STORAGE / AVAILABLE' : 'LOCAL BACKEND / UNAVAILABLE';
       if (online && get('reactor').dataset.state === 'offline') setState('idle', 'Local data is available again.');
       if (!online) {
-        voice.stop();
+        conversation.stop();
         setState('offline', 'Cannot reach local JARVIS. Check the command window, then refresh.');
       }
     },
     busy(value) {
-      if (value) voice.stop();
+      conversation.setBusy(value);
       busy = value;
-      get('voice-core').disabled = value;
-      get('mic-toggle').disabled = value;
+      get('voice-core').disabled = false;
       get('speak-reply').disabled = value || voice.muted || !lastReply || !voice.outputSupported;
       setState(value ? 'thinking' : 'idle', value ? 'Waiting for the real request to finish…' : 'Your next move starts here.');
     },
@@ -205,6 +233,7 @@ window.JarvisHUD = (() => {
     },
     success(aiReply, replyReady = true) {
       if (aiReply) {aiError = false;lastAI = new Date();}
+      if (conversation.active) {if(replyReady)conversation.reply(lastReply);else showError('Conversation stopped because the reply could not be loaded. Refresh the page.');return;}
       if (replyReady && get('auto-speak').checked && !voice.muted && !document.hidden && lastReply) voice.speak(lastReply);
     },
     error(message, isAI = false) {
@@ -212,7 +241,10 @@ window.JarvisHUD = (() => {
       setState('error', message);
       showError(message);
     },
-    stop: () => voice.stop(),
+    localReply: () => {if(conversation.active)conversation.reply(lastReply);},
+    pause: () => conversation.pause(),
+    stop: () => conversation.stop(),
+    conversation,
     clockText: () => `${new Date().toLocaleString('en-AU')} (${get('local-zone').textContent})`
   };
 })();

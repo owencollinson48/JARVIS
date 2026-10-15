@@ -38,7 +38,8 @@ window.JarvisVoice = class {
       this.source.connect(this.analyser); // Deliberately not connected to speakers.
       const recognition = new this.Recognition();
       this.recognition = recognition;
-      recognition.lang = 'en-AU';
+      recognition.lang = 'en-GB';
+      let finalDelivered = false;
       recognition.continuous = false;
       recognition.interimResults = true;
       let hadError = false;
@@ -47,7 +48,7 @@ window.JarvisVoice = class {
         this.starting = false;
         this.listening = true;
         this.callbacks.mic('Listening · live RMS');
-        this.callbacks.state('listening', 'Listening. Your transcript will be a draft, not sent automatically.');
+        this.callbacks.state('listening', this.handsFree ? 'Hands-free is on. Your next phrase will be submitted automatically.' : 'Listening. Review the transcript before sending.');
         this.sample(generation);
       };
       recognition.onresult = event => {
@@ -55,19 +56,20 @@ window.JarvisVoice = class {
         const results = Array.from(event.results);
         const final = results.filter(result => result.isFinal).map(result => result[0].transcript).join(' ').trim();
         const interim = results.filter(result => !result.isFinal).map(result => result[0].transcript).join(' ').trim();
-        if (final) this.callbacks.transcript(final.slice(0, 2000), true);
+        if (final && !finalDelivered) {finalDelivered=true;this.callbacks.transcript(final.slice(0, 2000), true);}
         else if (interim) this.callbacks.transcript(interim.slice(0, 2000), false);
       };
       recognition.onerror = event => {
         if (generation !== this.generation) return;
         hadError = true;
+        if (event.error === 'no-speech' && this.handsFree) {this.stopListening(true);this.callbacks.ended?.();return;}
         const messages = {
           'not-allowed': 'Microphone or speech permission was denied. Check your browser’s site permissions, then try again.',
           'service-not-allowed': 'Your browser has disabled its speech service. Use text input or check browser settings.',
           'audio-capture': 'No usable microphone was found. Check Windows microphone settings and your input device.',
           'network': 'The browser speech service could not be reached. Text input still works.',
           'no-speech': 'No speech was detected. Try again, or type your request.',
-          'language-not-supported': 'This browser does not support Australian English recognition. Use text input.'
+          'language-not-supported': 'This browser does not support British English recognition. Use text input.'
         };
         this.stopListening(true);
         this.fail(messages[event.error] || 'Voice recognition stopped unexpectedly. Please use text or try again.');
@@ -79,14 +81,15 @@ window.JarvisVoice = class {
         this.listening = false;
         this.releaseAudio();
         this.callbacks.mic('Microphone off');
-        if (!hadError) this.callbacks.state('idle', 'Review your transcript, then choose Send.');
+        if (!hadError) {this.callbacks.state('idle', this.handsFree ? 'Waiting for your next phrase…' : 'Review your transcript, then choose Send.');this.callbacks.ended?.();}
       };
       recognition.start();
       // Never leave the microphone running indefinitely if a browser service hangs.
       this.listenTimeout = setTimeout(() => {
         if (generation === this.generation) {
           this.stopListening(true);
-          this.fail('Voice input reached its 30-second limit. Review any draft, or try again.');
+          if (this.handsFree) this.callbacks.ended?.();
+          else this.fail('Voice input reached its 30-second limit. Review any draft, or try again.');
         }
       }, 30000);
     } catch (error) {
@@ -150,12 +153,17 @@ window.JarvisVoice = class {
     this.stopListening(true);
     this.stopSpeaking();
     const generation = ++this.speechGeneration;
-    const utterance = new SpeechSynthesisUtterance(text.slice(0, 4000));
-    utterance.lang = 'en-AU';
+    const spoken = text.replace(/[*#`]/g, '').replace(/^[ \t]*[-•] /gm, '');
+    const utterance = new SpeechSynthesisUtterance(spoken.slice(0, 4000));
+    utterance.lang = 'en-GB';
+    utterance.rate = .94;
+    utterance.pitch = .96;
     // Prefer an installed voice when available; consent also covers remote browser voices.
     const voices = speechSynthesis.getVoices();
-    utterance.voice = voices.find(voice => voice.localService && voice.lang === 'en-AU')
-      || voices.find(voice => voice.localService && voice.lang.startsWith('en')) || null;
+    utterance.voice = voices.find(voice => voice.voiceURI === this.voiceURI)
+      || voices.find(voice => /^en[-_]GB$/i.test(voice.lang) && /George|Ryan|Daniel|Oliver/i.test(voice.name))
+      || voices.find(voice => /^en[-_]GB$/i.test(voice.lang) && voice.localService)
+      || voices.find(voice => /^en[-_]GB$/i.test(voice.lang)) || null;
     utterance.onstart = () => {
       if (generation !== this.speechGeneration) return;
       this.speaking = true;
@@ -167,6 +175,7 @@ window.JarvisVoice = class {
       clearTimeout(this.speechTimeout);
       this.utterance = null;
       this.callbacks.state('idle', 'Speech finished. Ready for your next request.');
+      this.callbacks.speechEnded?.();
     };
     utterance.onend = finish;
     utterance.onerror = () => {
@@ -176,7 +185,7 @@ window.JarvisVoice = class {
     };
     this.utterance = utterance;
     this.callbacks.state('idle', 'Waiting for browser speech output…');
-    speechSynthesis.speak(utterance);
+    try {speechSynthesis.speak(utterance);} catch {this.stopSpeaking();this.fail('Browser speech could not start. Use text or check your installed voices.');return;}
     this.speechTimeout = setTimeout(() => {
       if (generation === this.speechGeneration) {
         this.stopSpeaking();

@@ -26,8 +26,12 @@ def initialize(path):
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS memories(id INTEGER PRIMARY KEY, category TEXT NOT NULL,
             content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS computer_targets(alias TEXT PRIMARY KEY,kind TEXT NOT NULL,path TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS computer_actions(id TEXT PRIMARY KEY,payload TEXT NOT NULL,preview TEXT NOT NULL,
+            status TEXT NOT NULL,created REAL NOT NULL,expires REAL NOT NULL,result TEXT);
         CREATE TABLE IF NOT EXISTS ai_usage(day TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0);
         ''')
+        db.execute("UPDATE computer_actions SET status='unknown',result='JARVIS restarted during execution. Outcome is unknown; no retry was made.' WHERE status='executing'")
         columns = {row[1] for row in db.execute('PRAGMA table_info(messages)')}
         if 'source' not in columns:
             db.execute("ALTER TABLE messages ADD COLUMN source TEXT NOT NULL DEFAULT 'demo'")

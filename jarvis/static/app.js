@@ -11,7 +11,7 @@ async function api(path, method='GET', data) {
  let result; try {result=await response.json();} catch {throw new Error('Unexpected server response. Restart JARVIS and refresh.');}
  if(!response.ok){const error=new Error(result.error||'The request failed. Please try again.');error.status=response.status;throw error;} return result;
 }
-async function refresh(){try{state=await api('/api/state');render();}catch(error){window.JarvisHUD.backend(false);throw error;}}
+async function refresh(){try{state=await api('/api/state');render();await window.JarvisComputer.refresh();}catch(error){window.JarvisHUD.backend(false);throw error;}}
 async function action(fn){try{await fn();}catch(error){notify(error.message||'Unable to connect to JARVIS. Check that the server is running.');}}
 const panelNames={tasks:'Task manager',university:'University',work:'Work schedule',projects:'Projects',briefing:'Daily briefing',reminders:'Deadlines',chat:'Conversation history',memory:'Saved memory',settings:'Settings'};
 function homeNavigation(){
@@ -22,7 +22,7 @@ function navigate(page){
  if(page==='dashboard'){$('workspace-dialog').close();homeNavigation();return;}
  if(!panelNames[page])return;
  $('panel-notice').hidden=true;
- window.JarvisHUD.stop();
+ window.JarvisHUD.pause();
  document.querySelectorAll('.workspace-content>.page').forEach(el=>el.hidden=el.id!==page);
  $('workspace-title').textContent=panelNames[page];$('panel-switch').value=page;
  document.querySelectorAll('.main-nav button').forEach(el=>{const active=el.dataset.page===page;el.classList.toggle('active',active);if(active)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
@@ -60,7 +60,7 @@ function render(){
  renderMemory(); renderAIStatus();window.JarvisHUD.render(state);
  if(document.activeElement!==$('display-name'))$('display-name').value=state.settings.name;
 }
-function openTask(task=null){window.JarvisHUD.stop();editing=task; $('dialog-title').textContent=task?'Edit task':'New task';$('task-title').value=task?.title||'';$('task-due').value=task?.due||today();$('task-priority').value=task?.priority||'Medium';$('task-project').value=task?.project||state.projects[0];$('form-error').textContent='';$('task-dialog').showModal();}
+function openTask(task=null){window.JarvisHUD.pause();editing=task; $('dialog-title').textContent=task?'Edit task':'New task';$('task-title').value=task?.title||'';$('task-due').value=task?.due||today();$('task-priority').value=task?.priority||'Medium';$('task-project').value=task?.project||state.projects[0];$('form-error').textContent='';$('task-dialog').showModal();}
 document.querySelectorAll('.new-task').forEach(b=>b.onclick=()=>openTask());$('close-dialog').onclick=()=>$('task-dialog').close();
 $('new-uni-task').onclick=()=>{openTask();$('task-project').value='University';};
 $('task-form').onsubmit=async event=>{event.preventDefault();$('save-task').disabled=true;try{await api(editing?`/api/tasks/${editing.id}`:'/api/tasks',editing?'PUT':'POST',{title:$('task-title').value,due:$('task-due').value,priority:$('task-priority').value,project:$('task-project').value,completed:Boolean(editing?.completed)});$('task-dialog').close();await refresh();}catch(error){$('form-error').textContent=error.message;}finally{$('save-task').disabled=false;}};
@@ -87,10 +87,10 @@ $('memory-form').onsubmit=event=>{event.preventDefault();action(async()=>{
  try{await api('/api/memories','POST',{category:$('memory-category').value,content:$('memory-content').value});$('memory-content').value='';await refresh();notify('Memory saved locally. It will be included in future AI messages.');}finally{$('save-memory').disabled=false;}
 });};
 function localCommand(content){
- const command=content.trim().toLowerCase();
+ const command=content.trim().replace(/^jarvis[, ]+/i,'').trim().toLowerCase();
  const aliases={'/tasks':'tasks','show tasks':'tasks','open tasks':'tasks','/briefing':'briefing','daily briefing':'briefing','show briefing':'briefing','/memory':'memory','open memory':'memory','/projects':'projects','/university':'university','/work':'work','/reminders':'reminders','/settings':'settings','/history':'chat'};
  if(aliases[command]){navigate(aliases[command]);return `${panelNames[aliases[command]]} opened. This command ran locally.`;}
- if(command==='/help')return 'Local commands: /tasks, /university, /work, /projects, /briefing, /reminders, /history, /memory, /settings. /remember saves an explicit fact. Other messages use your paid OpenAI API. Review voice transcripts before sending.';
+ if(command==='/help')return 'Local commands: /tasks, /university, /work, /projects, /briefing, /reminders, /history, /memory, /settings. /remember saves an explicit fact. Computer controls: open Spotify; next song; set volume to 40 percent; search the web for a topic; open an approved name. Apps/files/searches need confirm action. Playback/volume are immediate when enabled. Hands-free mode sends recognised phrases automatically using your paid chat API.';
  if(command==='what time is it' || command==='what time is it?')return window.JarvisHUD.clockText();
  if(command.startsWith('/') && !command.startsWith('/remember ') && command!=='/remember')return 'Unknown local command. Type /help to see the available commands.';
  return null;
@@ -98,20 +98,20 @@ function localCommand(content){
 async function sendMessage(input){
  if(sendingChat)return;
  const content=input.value.trim();if(!content)return;
- window.JarvisHUD.stop();
+ window.JarvisHUD.pause();
  const localReply=localCommand(content);
- if(localReply){window.JarvisHUD.exchange(content,localReply);input.value='';$('home-status').textContent='Local command · no API request.';return;}
+ if(localReply){window.JarvisHUD.exchange(content,localReply);input.value='';$('home-status').textContent='Local command · no API request.';window.JarvisHUD.localReply();return;}
  sendingChat=true;
  for(const id of ['send-chat','send-command'])$(id).disabled=true;
  for(const id of ['chat-input','command-input'])$(id).readOnly=true;
  window.JarvisHUD.busy(true);
  const localMemory=content.toLowerCase()==='/remember'||content.toLowerCase().startsWith('/remember ');
- const pending=localMemory?'Saving explicit memory locally…':'Waiting for OpenAI… (40-second timeout; no automatic retries)';
+ const pending=localMemory?'Saving explicit memory locally…':'Processing your request… AI calls have a 40-second timeout; no automatic retries';
  $('chat-status').textContent=pending;$('home-status').textContent=pending;
  window.JarvisHUD.exchange(content,pending);
  let success=null, failure=null, replyReady=false;
  try{
-  const result=await api('/api/chat','POST',{content});
+  const result=await api('/api/chat','POST',{content,action_id:window.JarvisComputer.pendingId});
   success=result;
   input.value='';
   // A saved exchange remains successful even if the following state refresh fails.
@@ -120,7 +120,7 @@ async function sendMessage(input){
    const reply=state.messages.filter(message=>message.role==='assistant').at(-1);
    if(reply){window.JarvisHUD.exchange(content,reply.content);replyReady=true;}
   }catch{window.JarvisHUD.exchange(content,'Your message was saved. Refresh the page to read the reply in History.');notify('Your message was saved, but the display could not refresh. Refresh the page to see it.');}
-  $('chat-status').textContent=result.memory_saved?'Memory saved locally.':'Reply saved in local history.';
+  $('chat-status').textContent=result.memory_saved?'Memory saved locally.':result.local?'Local computer response saved.':'Reply saved in local history.';
   $('home-status').textContent=$('chat-status').textContent;
  }catch(error){
   failure=error;
@@ -132,12 +132,14 @@ async function sendMessage(input){
   for(const id of ['chat-input','command-input'])$(id).readOnly=false;
  }
  if(failure)window.JarvisHUD.error(failure.message,!localMemory);
- else if(success)window.JarvisHUD.success(!success.memory_saved,replyReady);
+ else if(success)window.JarvisHUD.success(!success.memory_saved&&!success.local,replyReady);
  window.JarvisHUD.renderAI(state.ai);
 }
 $('chat-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('chat-input')));};
 $('command-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('command-input')));};
 $('settings-form').onsubmit=event=>{event.preventDefault();action(async()=>{await api('/api/settings','PUT',{name:$('display-name').value});await refresh();notify('Settings saved on this computer.');});};
+window.JarvisComputer.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
+window.addEventListener('jarvis-voice-submit',event=>{if(sendingChat)return;$('command-input').value=event.detail;action(()=>sendMessage($('command-input')));});
 window.addEventListener('jarvis-day-change',()=>action(refresh));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)action(refresh);});
 action(refresh);

@@ -4,23 +4,52 @@ The existing JARVIS application now has an **animated voice-first HUD** around i
 
 [View a screenshot of the HUD with sample data](docs/hud-preview.png).
 
-## The new voice-first interface
+## Hands-free conversation and a British voice
 
-The same Python/Flask/JavaScript/SQLite stack and database are retained. No React, Vite, FastAPI or new runtime dependency is required. There is no frontend build step: Flask serves the CSS, SVG and JavaScript directly.
+The same Python/Flask/JavaScript/SQLite stack and existing data are retained. No new runtime dependencies, paid audio service, React/Vite/FastAPI migration or frontend build step is required.
 
-- **Command centre:** original cyan vector rings over a dark background, a large microphone core, live local date/time/timezone and compact modules. The reference image is inspiration only, never a background or static replacement for the rings.
-- **Focused panels:** Tasks, University, Projects, History, Memory, Settings, Briefing and Deadlines open as native dialogs. Close with the × button or Escape to return home. The panel selector switches sections without losing the voice home screen. The University panel shows your existing University tasks; it does not invent timetable events.
-- **Text:** type below the core and choose Send. Shortcut prompts fill a draft; they do not send it. History remains available in its own panel. Short local commands work without OpenAI: `/tasks`, `/university`, `/work`, `/projects`, `/briefing`, `/reminders`, `/history`, `/memory`, `/settings`, `/help`, and “what time is it?”. Local commands open panels or show information; they do not modify your tasks.
-- **Voice input:** use current Windows Edge or Chrome at `http://127.0.0.1:5000`. Click the core or Microphone, read the browser-service privacy prompt, then enable voice for this page. Allow microphone permissions in your browser if asked. A waveform/RMS input meter reflects actual captured input. Recognition produces a **draft**; review it and click Send to make an AI request or save an explicit memory. If you already have a draft, replacing it requires confirmation.
-- **Voice output:** off by default. Click **Speech off**, consent to browser speech use, then click **Read reply**. Settings has an optional **Read new AI replies aloud automatically** checkbox, off by default. **Stop audio**, muting, or Escape stops output. A local installed English voice is preferred where available. Replies read aloud are limited to 4,000 characters; the full text remains in History.
-- **Keyboard:** Space toggles voice input when focus is outside a text field, select, link, button or open dialog. Normal button keyboard activation still works. Escape stops audio and closes the top dialog. All controls have visible focus and labels. The skip link goes directly to text input.
-- **Microphone lifecycle:** no background listening, wake word or raw-audio recording. The microphone closes after recognition ends, on error, on Stop/Escape, on opening a panel, when the page is hidden and when a 30-second limit is reached. If a browser permission request resolves after you cancel, the stream is immediately released.
-- **Privacy:** browser speech recognition/synthesis can send audio or text to browser/OS services. JARVIS asks for consent first and does not upload audio to its backend. No OpenAI audio endpoint or additional paid speech API has been added. Sending reviewed text still uses your existing paid OpenAI chat integration. Consent and voice settings last only for the open page; they are not new personal data stored in SQLite.
-- **Truthful signals:** slow idle orbits are decorative. Listening glow and the input bars use real time-domain microphone RMS (smoothed and scaled ×4). Processing is shown only while a real backend operation is pending. Speaking follows speech start/end events, **not measured output volume**. AI status is “configured, not checked” until a successful submitted AI request; then it reports the last successful reply time, not a continuous connection. Task progress comes from saved records; an empty list shows 0%. No CPU, network-speed, weather or storage statistics are invented.
-- **Responsive and accessible:** desktop side modules become a compact grid on small screens, with text input ahead of the widgets. Reduced motion follows your OS preference and can also be enabled for this page in Settings. Decorative animation pauses behind panels and when the page is hidden.
-- **Not implemented:** shifts, weekly work hours, recurring university events, calendar integration, Windows reminders, notifications and computer automation. Their panels explain the limitation. The existing free daily briefing remains based on saved tasks.
+1. Use current Edge or Chrome at `http://127.0.0.1:5000`. Configure your existing backend OpenAI key and billing first (below).
+2. Click the central **JARVIS core**. Read and accept the hands-free cost/privacy prompt, then allow microphone access in the browser. This initial consent is required.
+3. Speak naturally. While **CONVERSATION ON · AUTO SEND** is visible, each final recognised phrase is submitted automatically. JARVIS replies aloud, then listens again. No Send press is needed between turns. Wait until LISTENING before speaking again; this is turn-taking, not full-duplex interruption. The microphone closes during speech output so JARVIS does not hear itself.
+4. Click the same core again, press Escape or say **“stop listening”** / **“end conversation”** to stop. The core stays usable during a pending AI request. Stopping will not refund/cancel a backend request already sent; its reply may still appear as text, but it will not restart listening.
+5. Conversation always starts off on page load. An error, page close or 30-minute session limit ends it. A normal recognition end or no-speech timeout restarts listening while the session is on. Background tabs can continue listening with this consent, but browser/OS restrictions may suspend recognition or speech; JARVIS is not an always-running Windows voice service.
 
-If browser recognition is missing or its remote service fails, text entry and the rest of JARVIS remain available. Windows microphone permissions and actual recognition quality must be checked on your own PC; headless browser tests use a simulated input device and mocked speech services.
+**Costs/privacy:** hands-free speech automatically becomes a chat request using the existing paid OpenAI API, including the same task/memory/history context. The default daily cap remains 20 attempted AI requests. Local panel commands and Windows commands do not call OpenAI. Browser speech may send audio/text to browser/OS providers after consent. No raw audio is stored or sent to the Flask backend. There is no new OpenAI audio endpoint, wake word or voice cloning.
+
+The assistant is instructed to be a warm, composed British-English conversation partner with occasional dry humour and concise spoken answers. This is a style instruction, not a claim to reproduce a film actor's voice. Use Saved memory to explicitly save how you prefer to be addressed or the tone you like. **Settings → Voice & accessibility → Speech voice** lists actual voices exposed by your browser. Automatic selection prefers a British voice. Voice choice is saved in this browser; exact sound depends on the installed/provider voice.
+
+If no British voice is available, on Windows open **Settings → Time & language → Speech → Manage voices / Add voices** and add **English (United Kingdom)** if offered. Restart the browser and choose a British voice in JARVIS. Windows editions and browsers expose different voices; if none is available, JARVIS clearly reports it and uses the system fallback. You can enable Speech/Read reply for typed messages independently; hands-free replies speak automatically unless you mute them.
+
+The animated HUD retains live local clock/timezone, real saved task progress/deadlines, University tasks and focused panels for Tasks, Projects, History, Memory, Briefing and Settings. Work shifts, recurring university events, reminders and notifications remain unavailable. Idle orbits are decorative; listening uses actual microphone RMS; processing follows the real pending request; speech animation follows speech events, **not measured output amplitude**. OS and manual reduced-motion preferences are respected. Text input always remains available. Space toggles conversation outside controls/text fields/dialogs; Escape stops it and closes the top dialog.
+
+## Limited Windows computer controls
+
+The same local Flask backend acts as the Windows bridge. It is **off by default**. On your Windows copy, open **Settings → Computer controls** and enable it. On Linux/cloud the UI reports that Windows execution is unavailable. No actions are executed during setup or automated tests.
+
+As requested, **playback and volume commands are immediate** once enabled. **App/file/folder launches and browser searches always need a confirmation**. A structured preview appears and is spoken in hands-free mode. Say **“confirm action”** or **“cancel action”**, or use the preview buttons. “Yes” alone never authorises an action. Previews expire after two minutes; a new action replaces an older pending preview. Confirmations are single-use and cannot be replayed. Actions interrupted by a backend restart are marked outcome unknown and never retried automatically.
+
+| Say or type | Behaviour |
+| --- | --- |
+| `Open Spotify` | Confirm, then ask Windows to launch the registered Spotify app. Spotify must already be installed. |
+| `Open Calculator` / `Open Notepad` | Confirm, then launch the known Windows system app. |
+| `Next song` / `Previous song` / `Toggle playback` | Immediately send a Windows media key to the active media player. |
+| `Set volume to 40 percent` | Immediately set Windows master volume and read back its value. Range 0–100. |
+| `Turn the volume up` / `Turn the volume down` | Immediately change Windows master volume by 10 percentage points, bounded to 0–100. |
+| `Search the internet for engineering study tips` | Confirm, then open a Google search in your default browser. |
+| `Open my assignment` | Confirm, then open the exact item registered locally as `assignment`. |
+
+**Media limits:** Windows chooses the active media player. These are not verified Spotify-specific controls, and JARVIS cannot report a song title or playback state. Put Spotify into use first. Explicit Spotify-only playback commands and plain play/pause requests return guidance rather than pretending to verify a state; use **toggle playback** if you intend a toggle. System master volume is not Spotify's per-app volume. Browser search opens results; JARVIS does not read results, click pages, navigate arbitrary applications, type into other programs or control windows. Those are future, separately scoped features.
+
+To approve a file/folder/app:
+
+1. In File Explorer, right-click the specific local item → **Copy as path**.
+2. In JARVIS Settings → Computer controls, choose a short spoken name such as `assignment`, select its type, paste the path and click **Approve this target**.
+3. Say **“open my assignment”**, then **“confirm action”** after the preview.
+4. Inspect or remove approvals in the same panel. Removing approval cancels pending launches.
+
+Approvals permit only that exact resolved item, not searching through or reading folders. Supported file types: `.txt`, `.md`, `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.csv`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp3`, `.wav`, `.mp4`. Custom apps must be explicitly approved trusted `.exe` files. Shell scripts, shortcuts, network shares, arbitrary executable arguments and unrestricted shell/keyboard/mouse commands are not supported. Approval never verifies an executable's trustworthiness; choose only apps you already trust. Built-in app aliases cannot be replaced.
+
+Paths, approvals and recent execution records remain in SQLite; they are not added to model context. Local command history is displayed but excluded from AI history. There is no screenshot/file-content upload or credential/profile scanning. Launch success means Windows accepted the request, not that the application finished loading. Media success means the key was sent, not that a particular track changed. Failures and unknown results are explicit.
 
 ## Update your existing Windows installation
 
@@ -70,20 +99,20 @@ The backend uses the **official OpenAI Python SDK and Responses API** at `https:
 - Up to 50 memories of 500 characters each. Do not store passwords, keys or other secrets.
 - Saved project memories are notes; they do not create new task categories. The existing University, Personal Life and Collinson Creative sections are unchanged.
 
-**AI suggestions do not execute actions.** Chat cannot edit or complete tasks, create calendar events, save facts without the explicit local command, send reminders, read your files or control your PC. It has no tools or calendar connection. It is instructed to distinguish saved facts from suggestions and ask when information is missing. AI can still make mistakes; verify advice. Task management remains in the existing UI.
+**Model-generated suggestions do not execute actions.** A separate deterministic local router handles only the computer commands listed above, with their confirmation rules. The model has no arbitrary action tools. Chat cannot edit/complete tasks, create calendar events, save facts without the explicit command, send reminders or read your files. It is instructed to distinguish saved facts from suggestions and ask when information is missing. AI can still make mistakes; verify advice. Task management remains in the existing UI.
 
-The daily briefing remains a fast, free summary using fixed local rules. Voice uses browser features where supported, after consent. Notifications, shift scheduling, calendar integrations and computer automation are **not implemented**, and are labelled accordingly.
+The daily briefing remains a fast, free summary using fixed local rules. Voice uses browser features where supported, after consent. Notifications, shift scheduling, calendar integrations and general GUI automation are **not implemented**, and are labelled accordingly.
 
 ## Data sent to OpenAI
 
-Only when you submit an AI message, JARVIS sends:
+When you submit an AI message, including automatic voice submission during an enabled hands-free session, JARVIS sends:
 
 - Your message and local computer date.
 - Up to 100 task records, ordered with open tasks first, plus the total count and an explicit omitted count.
 - Your saved memories.
 - Up to the last 12 eligible AI messages as described above.
 
-No OpenAI requests are sent just to check configuration. Browser voice services may make their own requests only after you enable voice; they are separate from the backend chat integration. Legacy demo messages and local memory confirmations are not sent as conversation history. Tasks and memories are user data, not instructions. No API key is sent to the browser. The SDK has a 40-second timeout, automatic retries disabled, and an 800-output-token ceiling per request. Extremely long answers may fail the completeness check; no partial reply is saved.
+No OpenAI requests are sent just to check configuration. Browser voice services may make their own requests only after you enable voice; they are separate from the backend chat integration. Legacy demo messages, local memory confirmations and local computer command exchanges are not sent as conversation history. Approved file paths and action records are not added to AI context. Tasks and memories are user data, not instructions. No API key is sent to the browser. The SDK has a 40-second timeout, automatic retries disabled, and an 800-output-token ceiling per request. Extremely long answers may fail the completeness check; no partial reply is saved.
 
 ## First installation on Windows
 
@@ -115,7 +144,7 @@ py -m venv .venv
 
 ## Local storage and tests
 
-`data/jarvis.db` contains tasks, messages, settings, memories and local request counts. Back it up while JARVIS is stopped. Database files, virtual environments and `.env*` files are excluded from Git. `.env` files are **not loaded**; use Windows environment variables. This single-user local app has no login or encryption and must not be publicly hosted. It binds only to `127.0.0.1`, validates local Host headers and protects writes with a session CSRF token.
+`data/jarvis.db` contains tasks, messages, settings, memories, local request counts, explicit computer approvals and recent action records. Back it up while JARVIS is stopped. Database files, virtual environments and `.env*` files are excluded from Git. `.env` files are **not loaded**; use Windows environment variables. This single-user local app has no login or encryption and must not be publicly hosted. It binds only to `127.0.0.1`, validates local Host headers and protects writes with a session CSRF token.
 
 Run offline tests from the project folder:
 
@@ -125,7 +154,7 @@ Run offline tests from the project folder:
 
 Linux/macOS equivalent: `.venv/bin/python -m unittest discover -s tests -v`.
 
-Tests use temporary databases and mock HTTP transport through the actual OpenAI SDK. They do not use your key, call OpenAI or charge money. They cover existing dashboard/task behavior, upgrades from Milestone 1, persistence, explicit memory/deletion, outbound context, spending guards, missing keys, rate limits, invalid models, network timeouts and safe error handling. Live model access still needs your configured key and billing on your PC. The 19 Python tests continue to cover the backend.
+Tests use temporary databases and mock HTTP transport through the actual OpenAI SDK. They do not use your key, call OpenAI or charge money. They cover existing dashboard/task behavior, upgrades from Milestone 1, persistence, explicit memory/deletion, outbound context, spending guards, missing keys, rate limits, invalid models, network timeouts and safe error handling. Live model access still needs your configured key and billing on your PC. The 33 Python tests cover the backend, including Windows action previews, validation, expiry, cancellation, duplicate prevention and execution failures through a mocked adapter.
 
 The optional developer browser suite is `tests/hud_browser.cjs`. It uses Playwright/Chromium, which are **not application dependencies** and do not need installing on your Windows PC just to run JARVIS. Run it against a disposable database, never your personal one. In a Linux developer environment with Node, Playwright and Chromium already available:
 
@@ -135,9 +164,9 @@ The optional developer browser suite is `tests/hud_browser.cjs`. It uses Playwri
 JARVIS_TEST_URL=http://127.0.0.1:5010 JARVIS_TEST_CHROMIUM=/usr/bin/chromium node tests/hud_browser.cjs
 ```
 
-The browser suite exercises task and memory controls, settings, local commands, responsive layout, reduced motion, real pending/error UI, permission consent/denial and audio cleanup. Recognition and speech services and paid API responses are explicitly mocked; the browser microphone analyser uses a simulated audio device. No paid API or real speech service is called.
+The browser suite exercises task and memory controls, settings, local commands, responsive layout, reduced motion, real pending/error UI, permission consent/denial and audio cleanup. Recognition and speech services and paid API responses are explicitly mocked; the browser microphone analyser uses a simulated audio device. No paid API, real speech service or actual Windows action is called.
 
-On Windows, manually verify: click the core → consent → allow your microphone → say a short request → check the draft → Send. Try Escape while listening, deny permission once, try Read reply, and check that muting and switching tabs stop audio. Confirm actual recognition support on your installed browser. Task progress, deadlines, history and saved memories should match your existing data.
+On Windows, manually verify: click the core → consent → allow the microphone → speak → hear the response → speak a second turn without pressing Send. Turn the core off during a reply and verify listening stays off. Check a British voice, permission denial and Escape. Enable computer controls, ask to open Notepad, cancel once, then request it again and confirm. Try an approved test document, a browser search, next song with Spotify active and a modest volume setting. Actual Windows/Spotify/device behaviour cannot be verified on the Linux cloud machine; those tests mock the adapter. Existing tasks, history and memories should match your saved data.
 
 ## Architecture
 
@@ -149,5 +178,9 @@ On Windows, manually verify: click the core → consent → allow your microphon
 - `jarvis/templates/index.html` and `jarvis/static/style.css`: original vector HUD, responsive layouts and focused workspace dialogs.
 - `jarvis/static/app.js`: existing task/chat/memory/settings UI with local panel commands.
 - `jarvis/static/hud.js`: state-driven rings, clock, live task metrics, consent and keyboard controls.
+- `jarvis/computer.py`: deterministic commands, local approvals and single-use confirmation state.
+- `jarvis/windows.py`: limited Windows launch/media/Core Audio adapter using Python standard-library APIs.
+- `jarvis/static/conversation.js`: opt-in hands-free session and turn loop.
+- `jarvis/static/computer-ui.js`: approval, preview and action history controls.
 - `jarvis/static/voice.js`: browser recognition, microphone analyser, speech output and cleanup. All application output is rendered as text, not unsafe HTML.
 - `tests/`: offline regression and SDK integration tests.

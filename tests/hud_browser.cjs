@@ -117,7 +117,7 @@ const report = text => console.log('PASS', text);
     await page.locator('#command-input').fill('Test thinking and reply');
     await page.locator('#send-command').click();
     await check(page, () => document.querySelector('#reactor').dataset.state === 'thinking');
-    assert.equal(await page.locator('#voice-core').isDisabled(), true);
+    assert.equal(await page.locator('#voice-core').isDisabled(), false, 'The master off button stays usable during a request');
     assert.equal(await page.locator('#send-chat').isDisabled(), true);
     while (!releaseReply) await new Promise(resolve => setTimeout(resolve, 10));
     releaseReply();
@@ -143,13 +143,13 @@ const report = text => console.log('PASS', text);
     assert.deepEqual(errors, []);
     report('Desktop/mobile resizing, no horizontal overflow, reduced motion and no browser script errors');
 
-    // Voice integration: real browser audio APIs with a fake capture device, mocked recognition/output services.
+    // Hands-free loop: real Web Audio with fake capture hardware, mocked speech and API services.
     const voicePage = await context.newPage();
     const voiceErrors = [];
     voicePage.on('pageerror', error => voiceErrors.push(error.message));
     voicePage.on('dialog', dialog => dialog.accept());
     await voicePage.addInitScript(() => {
-      window.__micCalls = 0; window.__streams = [];
+      window.__micCalls = 0;window.__starts = 0;window.__streams = [];
       const capture = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
       navigator.mediaDevices.getUserMedia = async options => {
         window.__micCalls++;
@@ -157,19 +157,45 @@ const report = text => console.log('PASS', text);
       };
       window.SpeechRecognition = class {
         constructor() {window.__recognition = this;}
-        start() {setTimeout(() => this.onstart?.(), 0);}
+        start() {window.__starts++;setTimeout(() => this.onstart?.(), 0);}
         stop() {setTimeout(() => this.onend?.(), 0);}
         abort() {setTimeout(() => this.onend?.(), 0);}
       };
       window.SpeechSynthesisUtterance = class {constructor(text) {this.text = text;}};
       Object.defineProperty(window, 'speechSynthesis', {configurable: true, value: {
-        getVoices: () => [],
+        getVoices: () => [{name:'Test British voice',voiceURI:'test-british',lang:'en-GB',localService:true}],
         speak(utterance) {window.__utterance = utterance;setTimeout(() => utterance.onstart?.(), 0);},
         cancel() {window.__speechCancelled = true;}
       }});
     });
-    let voiceChatRequests = 0;
-    await voicePage.route('**/api/chat', async route => {voiceChatRequests++;await route.fulfill({status:503,json:{error:'Offline test'}});});
+    let voiceChatRequests = 0, actions = 0, voiceMessages = [], computerPending = null, releaseVoice;
+    await voicePage.route('**/api/state', async route => {
+      const response=await route.fetch(),data=await response.json();data.messages.push(...voiceMessages);await route.fulfill({response,json:data});
+    });
+    await voicePage.route('**/api/computer/state', async route => {
+      const response=await route.fetch(),data=await response.json();data.pending=computerPending;await route.fulfill({response,json:data});
+    });
+    await voicePage.route('**/api/chat', async route => {
+      voiceChatRequests++;
+      const body=route.request().postDataJSON();
+      if(body.content==='slow reply')await new Promise(resolve=>{releaseVoice=resolve;});
+      if(body.content==='error please'){await route.fulfill({status:503,json:{error:'Mocked API outage'}});return;}
+      let reply='Mocked conversational reply.',local=false;
+      if(body.content==='open spotify'){
+        computerPending={id:'test-action',preview:'Open approved target: spotify',expires:Date.now()/1000+120};
+        reply='Open Spotify. Say confirm action to execute, or cancel action.';local=true;
+      }
+      if(body.content==='confirm action'){
+        assert.equal(body.action_id,'test-action');actions++;computerPending=null;reply='Test adapter accepted Spotify launch.';local=true;
+      }
+      if(body.content==='next song'){actions++;reply='Test adapter sent next track.';local=true;}
+      voiceMessages.push({role:'user',content:body.content,source:local?'local':'openai'}, {role:'assistant',content:reply,source:local?'local':'openai'});
+      await route.fulfill({json:{ok:true,local,reply,action:computerPending||undefined}});
+    });
+    const say=async text=>voicePage.evaluate(text=>{
+      const result=[{transcript:text}];result.isFinal=true;window.__recognition.onresult({results:[result]});
+    },text);
+    const finishSpeech=async()=>{await voicePage.evaluate(()=>window.__utterance.onend());await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='listening');};
     await voicePage.goto(base);
     await check(voicePage, () => document.querySelector('#open-count').textContent !== '—');
     await voicePage.locator('#voice-core').click();
@@ -178,44 +204,73 @@ const report = text => console.log('PASS', text);
     await voicePage.locator('#allow-voice').click();
     await check(voicePage, () => document.querySelector('#reactor').dataset.state === 'listening');
     await check(voicePage, () => parseInt(document.querySelector('#mic-strength').textContent) > 0);
-    await voicePage.evaluate(() => {
-      const result = [{transcript: 'What is due tomorrow?'}];result.isFinal = true;
-      window.__recognition.onresult({results: [result]});
-    });
-    assert.equal(await voicePage.locator('#command-input').inputValue(), 'What is due tomorrow?');
-    assert.equal(voiceChatRequests, 0, 'Recognised text is never automatically sent');
-    await voicePage.keyboard.press('Escape');
-    await check(voicePage, () => window.__streams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')));
-    assert.equal(await voicePage.locator('#mic-strength').textContent(), '0%');
-    await voicePage.locator('#command-input').focus();
-    await voicePage.keyboard.press('Space');
-    assert.equal(await voicePage.evaluate(() => window.__micCalls), 1, 'Typing space cannot start the mic');
-    await voicePage.evaluate(() => document.activeElement.blur());
-    await voicePage.keyboard.press('Space');
-    await check(voicePage, () => document.querySelector('#reactor').dataset.state === 'listening');
-    await voicePage.keyboard.press('Escape');
-    report('Voice consent, real browser analyser with fake mic, transcript review, Space and Escape cleanup');
-
-    await voicePage.locator('#mute-toggle').click();
-    await voicePage.locator('#speak-reply').click();
+    await say('Help me plan tomorrow');
     await check(voicePage, () => document.querySelector('#reactor').dataset.state === 'speaking');
-    assert.match(await voicePage.locator('#reactor-description').textContent(), /not output amplitude/);
-    await voicePage.locator('#stop-audio').click();
-    assert.equal(await voicePage.evaluate(() => window.__speechCancelled), true);
-    assert.equal(await voicePage.locator('#reactor').getAttribute('data-state'), 'idle');
-    await voicePage.evaluate(() => {navigator.mediaDevices.getUserMedia = async () => {throw new DOMException('Denied', 'NotAllowedError');};});
+    assert.equal(voiceChatRequests,1,'A final phrase automatically submits exactly one turn');
+    assert.equal(await voicePage.evaluate(()=>window.__streams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),true,'Mic is closed during spoken reply');
+    assert.equal(await voicePage.evaluate(()=>window.__utterance.lang),'en-GB');
+    assert.equal(await voicePage.evaluate(()=>window.__utterance.voice.voiceURI),'test-british');
+    await finishSpeech();
+    await say('What should I prioritise?');
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='speaking');
+    assert.equal(voiceChatRequests,2);
     await voicePage.locator('#voice-core').click();
-    await check(voicePage, () => document.querySelector('#home-status').textContent.includes('denied'));
-    assert.equal(await voicePage.locator('#reactor').getAttribute('data-state'), 'error');
-    // A permission request resolved after Escape must still release its stream.
-    await voicePage.evaluate(() => {navigator.mediaDevices.getUserMedia = () => new Promise(resolve => {window.__resolveMic = resolve;});});
+    assert.equal(await voicePage.evaluate(()=>window.JarvisHUD.conversation.active),false);
+    await voicePage.evaluate(()=>window.__utterance.onend()); // Stale event must not revive a stopped session.
+    await new Promise(resolve=>setTimeout(resolve,500));
+    assert.equal(await voicePage.evaluate(()=>window.__starts),2);
+    report('Hands-free listen/send/speak/listen across turns, British voice selection, mic paused during speech, one-button off');
+
     await voicePage.locator('#voice-core').click();
-    await check(voicePage, () => Boolean(window.__resolveMic));
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='listening');
+    await say('open spotify');
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='speaking');
+    assert.equal(await voicePage.locator('#computer-preview').isVisible(),true);
+    assert.equal(actions,0,'App launch awaits confirmation');
+    await finishSpeech();await say('confirm action');
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='speaking');
+    assert.equal(actions,1);
+    assert.equal(await voicePage.locator('#computer-preview').isVisible(),false);
+    await finishSpeech();await say('next song');
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='speaking');
+    assert.equal(actions,2,'Playback is immediate as requested');
+    await finishSpeech();
+    const beforeStop=voiceChatRequests;await say('Jarvis, stop listening');
+    assert.equal(await voicePage.evaluate(()=>window.JarvisHUD.conversation.active),false);
+    assert.equal(voiceChatRequests,beforeStop,'Spoken stop does not call the API');
+    report('Spoken action preview/confirmation, immediate playback and spoken stop (mocked Windows actions)');
+    await voicePage.locator('#voice-core').click();
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='listening');
+    await say('slow reply');
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='thinking');
+    const startsBeforeOff=await voicePage.evaluate(()=>window.__starts);
+    await voicePage.locator('#voice-core').click();
+    assert.equal(await voicePage.evaluate(()=>window.JarvisHUD.conversation.active),false);
+    while(!releaseVoice)await new Promise(resolve=>setTimeout(resolve,10));releaseVoice();
+    await check(voicePage,()=>document.querySelector('#home-status').textContent.includes('Reply saved'));
+    await new Promise(resolve=>setTimeout(resolve,500));
+    assert.equal(await voicePage.evaluate(()=>window.__starts),startsBeforeOff);
+    assert.equal(await voicePage.evaluate(()=>window.JarvisHUD.voice.speaking),false);
+    report('Master off during an in-flight reply cannot restart speech or listening');
+
+    await voicePage.locator('#voice-core').click();
+    await check(voicePage,()=>document.querySelector('#reactor').dataset.state==='listening');
+    await say('error please');
+    await check(voicePage,()=>document.querySelector('#home-status').textContent.includes('Mocked API outage'));
+    assert.equal(await voicePage.evaluate(()=>window.JarvisHUD.conversation.active),false,'API failure ends the session');
+    assert.equal(await voicePage.locator('#command-input').inputValue(),'error please');
+    await voicePage.evaluate(()=>{navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('Denied','NotAllowedError');};});
+    await voicePage.locator('#voice-core').click();
+    await check(voicePage,()=>document.querySelector('#home-status').textContent.includes('denied'));
+    assert.equal(await voicePage.evaluate(()=>window.JarvisHUD.conversation.active),false);
+    await voicePage.evaluate(()=>{navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>{window.__resolveMic=resolve;});});
+    await voicePage.locator('#voice-core').click();
+    await check(voicePage,()=>Boolean(window.__resolveMic));
     await voicePage.keyboard.press('Escape');
-    await voicePage.evaluate(() => window.__resolveMic({getTracks: () => [{stop() {window.__lateStreamStopped = true;}}]}));
-    await check(voicePage, () => window.__lateStreamStopped === true);
-    assert.deepEqual(voiceErrors, []);
-    report('Speech-event-driven output, stop/mute, permission denial and cancellation of late mic permission');
+    await voicePage.evaluate(()=>window.__resolveMic({getTracks:()=>[{stop(){window.__lateStreamStopped=true;}}]}));
+    await check(voicePage,()=>window.__lateStreamStopped===true);
+    assert.deepEqual(voiceErrors,[]);
+    report('API failure, permission denial, Escape and late-permission cleanup stop conversation without retry loops');
 
     const unavailable = await context.newPage();
     await unavailable.addInitScript(() => {
@@ -225,7 +280,7 @@ const report = text => console.log('PASS', text);
     await check(unavailable, () => document.querySelector('#open-count').textContent !== '—');
     assert.match(await unavailable.locator('#speech-status').textContent(), /unsupported/);
     await unavailable.locator('#voice-core').click();
-    assert.match(await unavailable.locator('#home-status').textContent(), /unavailable/);
+    assert.match(await unavailable.locator('#home-status').textContent(), /needs browser speech/);
     assert.equal(await unavailable.locator('#voice-consent').evaluate(el => el.open), false);
     await unavailable.locator('#command-input').fill('/help');
     await unavailable.locator('#send-command').click();
@@ -256,6 +311,6 @@ const report = text => console.log('PASS', text);
     assert.match(await offline.locator('#last-response').textContent(),/Local commands/);
     assert.equal(await offline.locator('#reactor').getAttribute('data-state'),'offline');
     report('Truthful local-backend offline state');
-    console.log('All browser checks passed. Recognition and speech services were mocked; no real speech service or paid API was called.');
+    console.log('All browser checks passed. Recognition and speech services were mocked; no real speech service, Windows action or paid API was called.');
   } finally {await context?.close();await browser.close();}
 })().catch(error => {console.error(error);process.exitCode = 1;});

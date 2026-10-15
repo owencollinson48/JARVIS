@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, session
 from . import storage, ai
 from .assistant import bp as assistant_blueprint
+from .computer import bp as computer_blueprint
 
 PROJECTS = ['University', 'Personal Life', 'Collinson Creative']
 
@@ -19,6 +20,7 @@ def create_app(database=None):
     storage.initialize(app.config['DATABASE'])
     app.extensions['assistant_lock'] = Lock()
     app.register_blueprint(assistant_blueprint)
+    app.register_blueprint(computer_blueprint)
 
     @app.before_request
     def protect_local_app():
