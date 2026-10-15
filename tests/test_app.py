@@ -64,7 +64,7 @@ class JarvisTests(unittest.TestCase):
     def test_page_assets_and_local_protection(self):
         page = self.client.get('/')
         self.assertIn(b'JARVIS', page.data)
-        for asset in ('app.js','style.css'):
+        for asset in ('app.js','hud.js','voice.js','style.css'):
             with self.client.get('/static/'+asset) as response:
                 self.assertEqual(response.status_code, 200)
         self.assertEqual(self.client.post('/api/tasks', json=self.task).status_code, 403)

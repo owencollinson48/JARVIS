@@ -68,7 +68,7 @@ If asked to act, explain that it has NOT been done and direct the user to Task m
 A memory is persistent only after the user submits the Saved memory form or the exact /remember command.
 Do not claim something is saved because it appeared in conversation. Use only the supplied saved_memories as persistent memory.
 If a fact is absent or context is truncated, say so and ask rather than guessing. Older chat is partial context, not a source of current task status.
-Voice and reminders are pending. The daily dashboard briefing uses local rules, separate from this AI conversation.
+Browser voice dictation and speech output may be available after consent; they do not give you audio or action tools. Reminders are pending. The daily dashboard briefing uses local rules, separate from this AI conversation.
 Be concise, friendly, and honest about uncertainty.'''
 
 
