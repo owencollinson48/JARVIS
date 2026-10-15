@@ -110,7 +110,7 @@ const report = text => console.log('PASS', text);
 
     await page.locator('#command-input').fill('Test missing key');
     await page.locator('#send-command').click();
-    await check(page, () => document.querySelector('#home-status').textContent.includes('offline browser test'));
+    await check(page, () => document.querySelector('#home-status').textContent.includes('offline browser test') && document.querySelector('#reactor').dataset.state==='error');
     assert.equal(await page.locator('#command-input').inputValue(), 'Test missing key');
     assert.equal(await page.locator('#reactor').getAttribute('data-state'), 'error');
     replyMode = 'success';
