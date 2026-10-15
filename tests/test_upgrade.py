@@ -80,9 +80,13 @@ class UpgradeTests(unittest.TestCase):
   with self.app.app_context(),storage.connect(self.path) as db:
    context,history=ai.context(db);self.assertEqual(history,[]);self.assertEqual(context['saved_memories'][0]['content'],'Study mornings')
  def test_trusted_search_read_boundary_and_explicit_external_consent(self):
-  folder=self.trust();(folder/'escape.txt').symlink_to(self.path)
+  folder=self.trust();blocked=['../jarvis.db']
+  try:
+   (folder/'escape.txt').symlink_to(self.path);blocked.append('escape.txt')
+  except OSError:
+   pass  # Standard Windows accounts may lack symlink permission; traversal is still tested.
   found=self.request('workspace/search',dict(root='study',query='notes')).json;self.assertEqual(found['items'][0]['relative'],'notes.txt')
-  for relative in ('../jarvis.db','escape.txt'):
+  for relative in blocked:
    self.assertEqual(self.request('workspace/read',dict(root='study',relative=relative)).status_code,400)
   self.assertIn('Engineering',self.request('workspace/read',dict(root='study',relative='notes.txt')).json['text'])
   with patch('jarvis.ai.answer') as answer:
