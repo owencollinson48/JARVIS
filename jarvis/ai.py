@@ -54,9 +54,10 @@ def context(db):
     tasks = [dict(r) for r in db.execute('SELECT id,title,due,priority,project,completed FROM tasks ORDER BY completed,due,id LIMIT 100')]
     total = db.execute('SELECT count(*) FROM tasks').fetchone()[0]
     memories = [dict(r) for r in db.execute('SELECT category,content FROM memories ORDER BY id')]
-    from .planning import occurrences, now_local
-    return dict(saved_calendar=occurrences(db),local_date=now_local(db).date().isoformat(), tasks=tasks, total_tasks=total,
-                tasks_omitted=max(0, total-len(tasks)), saved_memories=memories), history
+    from .planning import occurrences, now_local, config as planner_config
+    from .agent.policy import sanitise_context
+    return sanitise_context(dict(saved_calendar=occurrences(db),local_time=now_local(db).isoformat(),local_timezone=planner_config(db)['timezone'],local_date=now_local(db).date().isoformat(), tasks=tasks, total_tasks=total,
+                tasks_omitted=max(0, total-len(tasks)), saved_memories=memories)), sanitise_context(history)
 
 
 INSTRUCTIONS = '''You are JARVIS, the user's personal assistant and thoughtful conversation partner. Speak in natural British English: warm, composed, attentive and occasionally dryly witty, with concise spoken sentences. Be personal using only explicit saved context; ask a relevant follow-up when useful. Avoid repetitive greetings, forced catchphrases, excessive lists or pretending to be a film character. Answer questions and help plan the user's day.
@@ -74,6 +75,8 @@ Be concise, friendly, and honest about uncertainty.'''
 
 
 def answer(content, snapshot, history, key, model):
+    from .agent.policy import contains_secret
+    if contains_secret(content):raise AssistantError('Sensitive-looking credentials were detected. Remove them before sending a request.',400)
     messages = [{'role': 'developer', 'content': 'Current local context (JSON data):\n'+json.dumps(snapshot, ensure_ascii=False)}]
     messages.extend({'role': m['role'], 'content': m['content'][:4000]} for m in history)
     messages.append({'role': 'user', 'content': content})

@@ -1,5 +1,7 @@
 # Broader computer access and local file editing
 
+For the latest natural-language computer agent, new dependencies, background tasks and its separate permissions, start with [the master upgrade guide](MASTER_UPGRADE.md). The manual controls described here remain available when Agent is off; their preview rules also remain in force when used directly.
+
 The new controls extend your existing JARVIS. They use your current Windows account, Flask, SQLite and JavaScript; no additional Python packages or desktop applications are needed. They can browse approved folders/drives, open supported files and approved applications, create folders/text files, edit text with previews/backups/undo, open websites, and open Windows customisation pages. They do not bypass Windows permissions, run arbitrary shell commands, or provide unrestricted clicking/typing through every application.
 
 ## Update your existing Windows installation

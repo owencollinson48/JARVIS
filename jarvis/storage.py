@@ -40,6 +40,11 @@ def initialize(path):
         CREATE TABLE IF NOT EXISTS realtime_sessions(id TEXT PRIMARY KEY,provider_call TEXT,started REAL,status TEXT);
         CREATE TABLE IF NOT EXISTS realtime_tool_calls(session TEXT,call_id TEXT,PRIMARY KEY(session,call_id));
         CREATE TABLE IF NOT EXISTS realtime_events(session TEXT,event TEXT,PRIMARY KEY(session,event));
+        CREATE TABLE IF NOT EXISTS agent_jobs(id TEXT PRIMARY KEY,goal TEXT NOT NULL,channel TEXT,status TEXT NOT NULL,state TEXT NOT NULL,pending TEXT,summary TEXT NOT NULL DEFAULT '',current_tool TEXT,rounds INTEGER NOT NULL DEFAULT 0,tool_count INTEGER NOT NULL DEFAULT 0,created REAL,updated REAL,owner_pid INTEGER,owner_birth REAL);
+        CREATE TABLE IF NOT EXISTS agent_events(id INTEGER PRIMARY KEY,job TEXT,call_id TEXT,tool TEXT,args TEXT,status TEXT,result TEXT,created REAL,UNIQUE(job,call_id));
+        CREATE TABLE IF NOT EXISTS agent_context(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS agent_revisions(id TEXT PRIMARY KEY,root TEXT,path TEXT,absolute TEXT,original_hash TEXT,saved_hash TEXT,kind TEXT,status TEXT NOT NULL DEFAULT 'saved',created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS agent_transfers(id TEXT PRIMARY KEY,operation TEXT,source_root TEXT,source TEXT,destination_root TEXT,destination TEXT,hash TEXT,status TEXT,absolute_source TEXT,absolute_destination TEXT);
         CREATE TABLE IF NOT EXISTS ai_usage(day TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0);
         ''')
         db.execute("UPDATE computer_actions SET status='unknown',result='Stale execution; outcome unknown. No retry was made.' WHERE status='executing' AND created<strftime('%s','now')-300")

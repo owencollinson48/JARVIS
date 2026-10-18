@@ -10,13 +10,15 @@ window.JarvisRealtime = (()=>{
   const old=identifier;identifier=null;get('paid-voice-toggle').textContent='Start paid voice';
   status('Paid voice off.');get('session-status').textContent='CONVERSATION OFF';
   get('mic-status').textContent='Microphone off';get('reactor').dataset.state='idle';get('reactor-state').textContent='READY';
-  if(old)try{await hooks.api('/api/realtime/sessions/'+old,'DELETE');}catch{status('Audio stopped locally. Server stop could not be confirmed; the three-minute timer still applies while the server runs.');}
+  if(old)try{await hooks.api('/api/realtime/sessions/'+old,'DELETE');}catch{status('Audio stopped locally. Server stop could not be confirmed; the configured session timer still applies while the server runs.');}
  }
  async function toggle(){
   if(active||starting){await stop();return;}
-  if(!confirm('Paid OpenAI audio and transcription charges apply. Microphone audio, saved tasks, memory and recent conversation are shared with OpenAI. Maximum three minutes; two session attempts per 24 hours. Local tools follow your saved computer permissions; previews need the on-screen confirmation. Start?'))return;
-  window.JarvisHUD.stop();starting=true;const version=++generation;
+  starting=true;const version=++generation;
   try{
+   const voiceLimits=await hooks.api('/api/realtime/state');if(version!==generation)return;
+   if(!confirm('Paid OpenAI audio and transcription charges apply. Microphone audio, saved tasks, memory and recent conversation are shared with OpenAI. Maximum '+(voiceLimits.seconds||180)+' seconds; '+(voiceLimits.daily_limit||2)+' session attempts per 24 hours. Local tools follow your saved computer permissions; previews need the on-screen confirmation. Start?')){starting=false;return;}
+   window.JarvisHUD.stop();
    status('Requesting microphone…');const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
    if(version!==generation){acquired.getTracks().forEach(t=>t.stop());return;}
    stream=acquired;
@@ -28,6 +30,14 @@ window.JarvisRealtime = (()=>{
    stream.getTracks().forEach(t=>pc.addTrack(t,stream));channel=pc.createDataChannel('oai-events');
    channel.onmessage=event=>{
     let data;try{data=JSON.parse(event.data);}catch{return;}
+    if(data.type==='response.function_call_arguments.done'&&data.name==='agent_request'){
+     let args;try{args=JSON.parse(data.arguments);}catch{return;}
+     const ownGeneration=generation,ownChannel=channel;
+     hooks.api('/api/realtime/sessions/'+identifier+'/agent','POST',{goal:args.goal,call_id:data.call_id}).then(async result=>{
+      let outcome=result;if(result.job){window.JarvisAgent.watch(result.job);while(ownGeneration===generation&&ownChannel.readyState==='open'){const job=await hooks.api('/api/agent/jobs/'+result.job);if(['completed','failed','cancelled','interrupted'].includes(job.status)){outcome={status:job.status,summary:job.summary,tool_count:job.tool_count};break;}await new Promise(resolve=>setTimeout(resolve,1000));}}
+      if(ownGeneration===generation&&ownChannel.readyState==='open'){ownChannel.send(JSON.stringify({type:'conversation.item.create',item:{type:'function_call_output',call_id:data.call_id,output:JSON.stringify(outcome)}}));ownChannel.send(JSON.stringify({type:'response.create'}));}
+     }).catch(error=>status(error.message));
+    }
     if(data.type==='response.function_call_arguments.done'&&data.name==='approved_local_command'){
      let args;try{args=JSON.parse(data.arguments);}catch{return;}
      hooks.api('/api/realtime/sessions/'+identifier+'/command','POST',{command:args.command,call_id:data.call_id}).then(async result=>{if(channel?.readyState==='open'){channel.send(JSON.stringify({type:'conversation.item.create',item:{type:'function_call_output',call_id:data.call_id,output:JSON.stringify(result)}}));channel.send(JSON.stringify({type:'response.create'}));}await window.JarvisComputer.refresh();window.dispatchEvent(new Event('jarvis-data-change'));}).catch(error=>{status(error.message);stop();});
@@ -36,6 +46,7 @@ window.JarvisRealtime = (()=>{
     const user=data.type==='conversation.item.input_audio_transcription.completed',assistant=data.type==='response.output_audio_transcript.done';
     if(user||assistant){
      const content=data.transcript;if(!content)return;
+     if(user&&/^(?:jarvis[, ]+)?(?:please )?(?:stop everything|stop|cancel that|don['’]t do that|do not do that)[.!?]?$/i.test(content.trim())){window.dispatchEvent(new Event('jarvis-emergency'));return;}
      if(user&&/^(?:jarvis[, ]+)?(?:stop listening|end conversation|turn off jarvis)[.!?]?$/i.test(content.trim())){stop();return;}
      get(user?'last-utterance':'last-response').textContent=content;
      if(identifier)hooks.api('/api/realtime/sessions/'+identifier+'/transcript','POST',{role:user?'user':'assistant',content:content.slice(0,8000),event:data.event_id||data.item_id}).then(()=>window.dispatchEvent(new Event('jarvis-data-change'))).catch(()=>status('Voice transcript could not be saved.'));
@@ -51,10 +62,10 @@ window.JarvisRealtime = (()=>{
    const result=await hooks.api('/api/realtime/sessions','POST',{sdp:pc.localDescription.sdp,paid_consent:true});
    if(version!==generation){await hooks.api('/api/realtime/sessions/'+result.id,'DELETE');return;}
    identifier=result.id;await pc.setRemoteDescription({type:'answer',sdp:result.sdp});
-   active=true;starting=false;get('paid-voice-toggle').textContent='Stop paid voice';status('Negotiating paid voice media connection… Three-minute session limit.');
+   active=true;starting=false;get('paid-voice-toggle').textContent='Stop paid voice';status('Negotiating paid voice media connection… Configured session timer is active.');
    get('session-status').textContent='PAID VOICE ON';get('mic-status').textContent='Paid voice microphone active';
    timer=setTimeout(stop,result.seconds*1000);
-  }catch(error){await stop();status(error.message||'Voice connection failed. No automatic retry.');}
+  }catch(error){if(version===generation){await stop();status(error.message||'Voice connection failed. No automatic retry.');}}
  }
  return {init(options){hooks=options;get('paid-voice-toggle').onclick=()=>hooks.action(toggle);document.addEventListener('keydown',e=>{if(e.key==='Escape')stop();});window.addEventListener('pagehide',()=>stop());},stop,get active(){return active||starting;}};
 })();

@@ -34,6 +34,7 @@ window.JarvisConversation = class {
   }
   heard(text) {
     if (!this.active || this.waiting || this.busy) return;
+    if (/^(?:jarvis[, ]+)?(?:please )?(?:stop everything|stop|cancel that|don['’]t do that|do not do that)[.!?]?$/i.test(text.trim())){this.stop();window.dispatchEvent(new Event('jarvis-emergency'));return;}
     if (/^(?:jarvis[, ]+)?(?:please )?(?:stop listening|stop talking|end conversation|turn off jarvis)(?: please)?[.!?]?$/i.test(text.trim())) {
       this.stop();return;
     }

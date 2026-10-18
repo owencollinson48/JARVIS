@@ -12,6 +12,7 @@ from .planning import bp as planning_blueprint
 from .communications import bp as communications_blueprint, public as telephony_blueprint
 from . import relay, communications, realtime, files
 from .workspace import bp as workspace_blueprint
+from .agent import api as agent_api, jobs as agent_jobs
 
 PROJECTS = ['University', 'Personal Life', 'Collinson Creative']
 
@@ -23,12 +24,15 @@ def create_app(database=None):
     app.config['DATABASE'] = str(database or Path(__file__).resolve().parent.parent / 'data' / 'jarvis.db')
     storage.initialize(app.config['DATABASE'])
     app.extensions['assistant_lock'] = Lock()
+    app.extensions['agent_worker_lock'] = Lock()
+    agent_jobs.recover(app)
     app.register_blueprint(assistant_blueprint)
     app.register_blueprint(computer_blueprint)
     app.register_blueprint(planning_blueprint)
     app.register_blueprint(communications_blueprint)
     app.register_blueprint(workspace_blueprint)
     app.register_blueprint(files.bp)
+    app.register_blueprint(agent_api.bp)
     app.register_blueprint(realtime.bp)
     app.register_blueprint(telephony_blueprint)
     relay.register(app)

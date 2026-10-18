@@ -194,6 +194,11 @@ def delete_workflow(name):
 
 @bp.post('/emergency-stop')
 def emergency():
+    from .agent import jobs as agent_jobs,policy as agent_policy
+    with connect() as db:
+        agent_cfg=agent_policy.config(db);agent_cfg['enabled']=False
+        db.execute("INSERT INTO settings VALUES('agent_policy',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(json.dumps(agent_cfg),))
+    agent_jobs.cancel()
     with connect() as db:
         db.execute("INSERT INTO settings VALUES('computer_enabled','0') ON CONFLICT(key) DO UPDATE SET value='0'")
         cfg=planning.config(db);cfg['proactive']=False

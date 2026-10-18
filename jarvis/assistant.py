@@ -23,7 +23,15 @@ def text(value, maximum, label):
     return value.strip()
 
 
+def checked_memory(value):
+    from .agent.policy import contains_secret
+    value=text(value,500,'Memory')
+    if contains_secret(value):raise ValueError('Passwords, payment credentials and authentication secrets cannot be saved as personal memory.')
+    return value
+
+
 def insert_memory(db, category, content):
+    content=checked_memory(content)
     if category not in CATEGORIES:
         raise ValueError('Choose preference, project or fact.')
     db.execute('BEGIN IMMEDIATE')
@@ -55,7 +63,7 @@ def save_memory():
 
 @bp.put('/memories/<int:memory_id>')
 def edit_memory(memory_id):
-    data=payload();content=text(data.get('content'),500,'Memory');category=data.get('category','fact')
+    data=payload();content=checked_memory(data.get('content'));category=data.get('category','fact')
     if category not in CATEGORIES:raise ValueError('Choose preference, project or fact.')
     lock=begin_change()
     try:
@@ -86,6 +94,15 @@ def delete_memory(memory_id):
 def chat():
     data = payload()
     content = text(data.get('content'), 2000, 'Message')
+    from .agent import jobs as agent_jobs,policy as agent_policy
+    if agent_jobs.is_stop(content):
+        from .workspace import emergency
+        response=emergency()
+        return jsonify(ok=True,local=True,reply=response.get_json()['reply'])
+    with connection() as db:use_agent=agent_policy.config(db)['enabled']
+    if use_agent and not content.startswith('/') and content.strip().lower() not in ('confirm action','cancel action'):
+        identifier=agent_jobs.submit(content)
+        return jsonify(ok=True,local=True,agent_job=identifier,reply='I’m on it. I’ll work through the task and report what I can verify.'),202
     lock = begin_change()
     try:
         with connection() as db:

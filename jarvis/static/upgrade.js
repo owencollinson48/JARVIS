@@ -67,7 +67,7 @@ window.JarvisUpgrade = (()=>{
   form('research-form',async()=>{if(!confirm('Use paid OpenAI web search? The query is sent externally; search tool charges may apply.'))return;const data=await hooks.api('/api/workspace/research','POST',{query:get('research-query').value,external_consent:true});get('research-answer').textContent=data.reply;rows('research-sources',data.sources,(n,x)=>{const a=el('a',x.title||x.url);a.href=x.url;a.target='_blank';a.rel='noopener noreferrer';n.append(a);});});
   form('communication-settings',()=>hooks.api('/api/communications/settings','PUT',{sms:get('comm-sms').checked,calls:get('comm-calls').checked,recipient_consent:get('comm-consent').checked,sms_limit:+get('comm-sms-limit').value,call_limit:+get('comm-call-limit').value,call_seconds:+get('comm-seconds').value,categories:[...document.querySelectorAll('[name="comm-category"]:checked')].map(x=>x.value)}));
   form('contact-form',async()=>{await hooks.api('/api/communications/jobs','POST',{channel:get('contact-channel').value,body:get('contact-body').value,due:get('contact-due').value});get('contact-form').reset();});
-  get('emergency-stop').onclick=()=>run(async()=>{window.JarvisHUD.stop();await window.JarvisRealtime.stop();const data=await hooks.api('/api/workspace/emergency-stop','POST',{});hooks.notify(data.reply+(data.call_stop_failures?` ${data.call_stop_failures} provider stop requests failed.`:'')+(data.voice_stop_failures?` ${data.voice_stop_failures} paid voice stop requests could not be confirmed.`:''));});
+  get('emergency-stop').onclick=()=>run(()=>window.JarvisAgent.stop());
   setInterval(()=>{if(!document.hidden)hooks.action(async()=>{await planning();await communications();});},60000);
  }};
 })();

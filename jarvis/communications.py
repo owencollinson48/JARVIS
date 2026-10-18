@@ -137,7 +137,7 @@ def dispatch(identifier):
 
 def worker():
     from . import realtime
-    with connect() as db:expired=[r[0] for r in db.execute("SELECT id FROM realtime_sessions WHERE status IN ('active','stop-failed') AND started<?",(time.time()-180,))]
+    with connect() as db:expired=[r[0] for r in db.execute("SELECT id FROM realtime_sessions WHERE status IN ('active','stop-failed') AND started<?",(time.time()-realtime.limits()[0],))]
     for identifier in expired:realtime.end_session(current_app.config['DATABASE'],identifier)
     with connect() as db:
         planning.tick(db);cfg=config(db)

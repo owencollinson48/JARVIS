@@ -1,5 +1,8 @@
 # JARVIS — personal command centre
 
+**Latest upgrade: [Conversational Windows agent — installation, permissions and limits](docs/MASTER_UPGRADE.md).** This extends the existing app with OpenAI structured tools, background jobs, recoverable document/project editing, Windows UI Automation, reviewed commands, a dedicated browser and screen review. It starts disabled. Existing dashboard and manual controls remain available.
+
+
 **Computer access update:** [Windows instructions for drive access, file editing/backups/undo and customisation](docs/COMPUTER_ACCESS.md). Uses the existing programs and dependencies. New edit permissions start off; folders or whole drives can be approved explicitly.
 
 JARVIS 2.0 adds saved schedules, proactive notices, editable shared memory, trusted file workflows, optional paid interruptible voice, and a separate signed SMS/phone gateway. **Existing tasks and the animated HUD are preserved.** Start with [the Windows upgrade and communication guide](docs/COMMUNICATIONS.md). Paid features remain off until configured and explicitly enabled.
@@ -10,7 +13,7 @@ The existing JARVIS application now has an **animated voice-first HUD** around i
 
 ## Hands-free conversation and a British voice
 
-The same Python/Flask/JavaScript/SQLite stack and existing data are retained. No new runtime dependencies, paid audio service, React/Vite/FastAPI migration or frontend build step is required.
+The same Python/Flask/JavaScript/SQLite stack and existing data are retained. Browser speech itself needs no extra paid audio service or frontend build. The new agent adds pinned Windows, document and browser libraries through requirements.txt; the Python/Flask stack is retained.
 
 1. Use current Edge or Chrome at `http://127.0.0.1:5000`. Configure your existing backend OpenAI key and billing first (below).
 2. Click the central **JARVIS core**. Read and accept the hands-free cost/privacy prompt, then allow microphone access in the browser. This initial consent is required.
@@ -51,7 +54,7 @@ To approve a file/folder/app:
 3. Say **“open my assignment”**, then **“confirm action”** after the preview.
 4. Inspect or remove approvals in the same panel. Removing approval cancels pending launches.
 
-Approvals permit only that exact resolved item, not searching through or reading folders. Supported file types: `.txt`, `.md`, `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.csv`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp3`, `.wav`, `.mp4`. Custom apps must be explicitly approved trusted `.exe` files. Shell scripts, shortcuts, network shares, arbitrary executable arguments and unrestricted shell/keyboard/mouse commands are not supported. Approval never verifies an executable's trustworthiness; choose only apps you already trust. Built-in app aliases cannot be replaced.
+Approvals permit only that exact resolved item, not searching through or reading folders. Supported file types: `.txt`, `.md`, `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.csv`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.mp3`, `.wav`, `.mp4`. Custom apps must be explicitly approved trusted `.exe` files. These manual opening controls do not execute scripts, shortcuts or arbitrary arguments. The optional Agent panel separately supports exact reviewed scripts and desktop interaction under its own permissions; see the upgrade guide. Approval never verifies an executable's trustworthiness; choose only apps you already trust. Built-in app aliases cannot be replaced.
 
 Paths, approvals and recent execution records remain in SQLite; they are not added to model context. Local command history is displayed but excluded from AI history. There is no screenshot capture or credential/profile scanning. Trusted document reading and explicitly approved document summaries are available in the Computer panel. Launch success means Windows accepted the request, not that the application finished loading. Media success means the key was sent, not that a particular track changed. Failures and unknown results are explicit.
 
@@ -103,9 +106,9 @@ The backend uses the **official OpenAI Python SDK and Responses API** at `https:
 - Up to 50 memories of 500 characters each. Do not store passwords, keys or other secrets.
 - Saved project memories are notes; they do not create new task categories. The existing University, Personal Life and Collinson Creative sections are unchanged.
 
-**Model-generated suggestions do not execute actions.** A separate deterministic local router handles only the computer commands listed above, with their confirmation rules. The model has no arbitrary action tools. Explicit local date-only task commands can create/reschedule a task. Calendar editing stays in Planning; document summaries/research and contact have separate approval controls. Paid voice has a bounded local command tool under the same permissions. It is instructed to distinguish saved facts from suggestions and ask when information is missing. AI can still make mistakes; verify advice. Task management remains in the existing UI.
+**Model-generated suggestions do not execute actions.** A separate deterministic local router handles only the computer commands listed above, with their confirmation rules. The legacy chat model has no action tools. Enabling Agent switches natural chat to validated structured tools with the permissions and reviewed execution described in docs/MASTER_UPGRADE.md. Explicit local date-only task commands can create/reschedule a task. Calendar editing stays in Planning; document summaries/research and contact have separate approval controls. Paid voice has a bounded local command tool under the same permissions. It is instructed to distinguish saved facts from suggestions and ask when information is missing. AI can still make mistakes; verify advice. Task management remains in the existing UI.
 
-The daily briefing remains a fast, free summary using fixed local rules. Voice uses browser features where supported, after consent. Saved shift scheduling and notices are implemented. External calendar integrations and unrestricted GUI automation remain unavailable.
+The daily briefing remains a fast, free summary using fixed local rules. Voice uses browser features where supported, after consent. Saved shift scheduling and notices are implemented. External calendar integrations remain unavailable. The optional Agent panel adds bounded, reviewed GUI automation; see its guide for supported applications and limitations.
 
 ## Data sent to OpenAI
 
@@ -116,7 +119,7 @@ When you submit an AI message, including automatic voice submission during an en
 - Your saved memories and manually saved upcoming calendar occurrences.
 - Up to the last 12 eligible AI messages as described above.
 
-No OpenAI requests are sent just to check configuration. Explicitly approved paid voice streams microphone audio and context to OpenAI; approved summaries send extracted document text, and research sends your search question. See docs/COMMUNICATIONS.md for channel-specific limits and privacy. Browser voice services may make their own requests only after you enable voice; they are separate from the backend chat integration. Legacy demo messages, local memory confirmations and local computer command exchanges are not sent as conversation history. Approved file paths and action records are not added to AI context. Tasks and memories are user data, not instructions. No API key is sent to the browser. The SDK has a 40-second timeout, automatic retries disabled, and an 800-output-token ceiling per request. Extremely long answers may fail the completeness check; no partial reply is saved.
+No OpenAI requests are sent just to check configuration. Explicitly approved paid voice streams microphone audio and context to OpenAI; approved summaries send extracted document text, and research sends your search question. See docs/COMMUNICATIONS.md for channel-specific limits and privacy. Browser voice services may make their own requests only after you enable voice; they are separate from the backend chat integration. Legacy demo messages, local memory confirmations and local computer command exchanges are not sent as conversation history. In legacy mode, approved target paths and action records are not added to AI context. Agent mode additionally shares its permitted tool observations and inspectable recent workflow metadata; file text and screenshots have separate sharing controls. Tasks and memories are user data, not instructions. No API key is sent to the browser. The SDK has a 40-second timeout, automatic retries disabled, and an 800-output-token ceiling for legacy chat (1,400 for each agent model step). Extremely long answers may fail the completeness check; no partial reply is saved.
 
 ## First installation on Windows
 

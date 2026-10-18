@@ -13,9 +13,9 @@ async function api(path, method='GET', data) {
  let result; try {result=await response.json();} catch {throw new Error('Unexpected server response. Restart JARVIS and refresh.');}
  if(!response.ok){const error=new Error(result.error||'The request failed. Please try again.');error.status=response.status;throw error;} return result;
 }
-async function refresh(){try{state=await api('/api/state');render();}catch(error){window.JarvisHUD.backend(false);throw error;}const panels=await Promise.allSettled([window.JarvisComputer.refresh(),window.JarvisUpgrade.refresh()]);const failure=panels.find(x=>x.status==='rejected');if(failure)notify('Your local data loaded, but an additional panel failed: '+failure.reason.message);}
+async function refresh(){try{state=await api('/api/state');render();}catch(error){window.JarvisHUD.backend(false);throw error;}const panels=await Promise.allSettled([window.JarvisComputer.refresh(),window.JarvisUpgrade.refresh(),window.JarvisAgent.refresh()]);const failure=panels.find(x=>x.status==='rejected');if(failure)notify('Your local data loaded, but an additional panel failed: '+failure.reason.message);}
 async function action(fn){try{await fn();}catch(error){notify(error.message||'Unable to connect to JARVIS. Check that the server is running.');}}
-const panelNames={tasks:'Task manager',university:'University',work:'Work schedule',projects:'Projects',briefing:'Daily briefing',reminders:'Deadlines',chat:'Conversation history',memory:'Saved memory',settings:'Settings',planning:'Planning',autonomy:'Computer & files',communications:'Voice, phone & SMS'};
+const panelNames={tasks:'Task manager',university:'University',work:'Work schedule',projects:'Projects',briefing:'Daily briefing',reminders:'Deadlines',chat:'Conversation history',memory:'Saved memory',settings:'Settings',planning:'Planning',autonomy:'Computer & files',communications:'Voice, phone & SMS',agent:'Conversational agent'};
 function homeNavigation(){
  document.body.classList.remove('panel-open');
  document.querySelectorAll('.main-nav button').forEach(el=>{const active=el.dataset.page==='dashboard';el.classList.toggle('active',active);if(active)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
@@ -90,7 +90,8 @@ $('memory-form').onsubmit=event=>{event.preventDefault();action(async()=>{
 });};
 function localCommand(content){
  const command=content.trim().replace(/^jarvis[, ]+/i,'').trim().toLowerCase();
- const aliases={'/tasks':'tasks','show tasks':'tasks','open tasks':'tasks','/briefing':'briefing','daily briefing':'briefing','show briefing':'briefing','/memory':'memory','open memory':'memory','/projects':'projects','/university':'university','/work':'work','/reminders':'reminders','/settings':'settings','/history':'chat','/planning':'planning','/computer':'autonomy','/phone':'communications'};
+ const aliases={'/tasks':'tasks','show tasks':'tasks','open tasks':'tasks','/briefing':'briefing','daily briefing':'briefing','show briefing':'briefing','/memory':'memory','open memory':'memory','/projects':'projects','/university':'university','/work':'work','/reminders':'reminders','/settings':'settings','/history':'chat','/planning':'planning','/computer':'autonomy','/phone':'communications','/agent':'agent'};
+ if(window.JarvisAgent?.enabled&&!content.trim().startsWith('/')&&aliases[command])return null;
  if(aliases[command]){navigate(aliases[command]);return `${panelNames[aliases[command]]} opened. This command ran locally.`;}
  if(command==='/help')return 'Local commands: /tasks, /university, /work, /projects, /briefing, /reminders, /history, /memory, /settings, /computer. /remember saves an explicit fact. Computer controls: open Spotify; next song; set volume to 40 percent; search the web for a topic; open an approved name. Opens follow saved approvals. Edit through Computer, or use replace text in docs:notes.txt | old | new, create text file docs:plan.md | content, create folder docs:Notes. Edits need confirmation. Open a website with open https://example.org or Windows themes with open windows themes. Playback/volume are immediate when enabled. Hands-free mode sends recognised phrases automatically using your paid chat API.';
  if(command==='what time is it' || command==='what time is it?')return window.JarvisHUD.clockText();
@@ -98,6 +99,7 @@ function localCommand(content){
  return null;
 }
 async function sendMessage(input){
+ if(/^(?:jarvis[, ]+)?(?:please )?(?:stop everything|stop|cancel that|don['’]t do that|do not do that)[.!?]?$/i.test(input.value.trim())){input.value='';await window.JarvisAgent.stop();return;}
  if(sendingChat)return;
  const content=input.value.trim();if(!content)return;
  window.JarvisHUD.pause();
@@ -114,12 +116,12 @@ async function sendMessage(input){
  let success=null, failure=null, replyReady=false;
  try{
   const result=await api('/api/chat','POST',{content,action_id:window.JarvisComputer.pendingId});
-  success=result;
+  success=result;if(result.agent_job)window.JarvisAgent.watch(result.agent_job);
   input.value='';
   // A saved exchange remains successful even if the following state refresh fails.
   try{
    await refresh();
-   const reply=state.messages.filter(message=>message.role==='assistant').at(-1);
+   const reply=result.agent_job?{content:result.reply}:state.messages.filter(message=>message.role==='assistant').at(-1);
    if(reply){window.JarvisHUD.exchange(content,reply.content);replyReady=true;}
   }catch{window.JarvisHUD.exchange(content,'Your message was saved. Refresh the page to read the reply in History.');notify('Your message was saved, but the display could not refresh. Refresh the page to see it.');}
   $('chat-status').textContent=result.memory_saved?'Memory saved locally.':result.local?'Local action response saved.':'Reply saved in local history.';
@@ -140,11 +142,13 @@ async function sendMessage(input){
 $('chat-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('chat-input')));};
 $('command-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('command-input')));};
 $('settings-form').onsubmit=event=>{event.preventDefault();action(async()=>{await api('/api/settings','PUT',{name:$('display-name').value});await refresh();notify('Settings saved on this computer.');});};
+window.JarvisAgent.init({api,action,notify});
 window.JarvisFiles.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.JarvisUpgrade.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.JarvisComputer.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.addEventListener('jarvis-voice-submit',event=>{if(sendingChat)return;$('command-input').value=event.detail;action(()=>sendMessage($('command-input')));});
 window.addEventListener('jarvis-day-change',()=>action(refresh));
 window.addEventListener('jarvis-data-change',()=>action(refresh));
+window.addEventListener('jarvis-agent-result',event=>{const item=event.detail;if(sendingChat||window.JarvisRealtime.active){notify(item.summary||item.status);return;}window.JarvisHUD.exchange(item.goal,item.summary||item.status);window.JarvisHUD.success(false,true);});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)action(refresh);});
 action(refresh);

@@ -9,33 +9,56 @@ blinker==1.9.0
 certifi==2026.7.22
 charset-normalizer==3.5.2
 click==8.5.0
-Flask==3.1.2
+et-xmlfile==2.0.0
+flask==3.1.2
 flask-sock==0.7.0
 frozenlist==1.8.0
+greenlet==3.5.6
 h11==0.16.0
 httpcore2==2.13.1
 httpx2==2.13.1
 idna==3.20
 itsdangerous==2.2.0
-Jinja2==3.1.6
+jinja2==3.1.6
 jiter==0.17.0
-MarkupSafe==3.0.4
+lxml==6.1.3
+markupsafe==3.0.4
 multidict==7.1.0
 openai==3.31.0
+openpyxl==3.1.5
+pillow==13.0.0
+playwright==1.64.0
 propcache==0.5.4
+psutil==7.2.2
 pydantic==2.14.1
-pydantic_core==2.50.1
-PyJWT==2.15.1
+pydantic-core==2.50.1
+pyee==14.0.0
+pyjwt==2.15.1
 pypdf==6.20.1
+python-docx==1.2.0
+reportlab==5.0.1
 requests==2.34.2
 simple-websocket==1.1.0
 sniffio==1.3.1
 truststore==0.10.5
 twilio==9.12.0
+typing-extensions==4.16.0
 typing-inspection==0.4.4
-typing_extensions==4.16.0
 tzdata==2026.5
 urllib3==2.8.0
-Werkzeug==3.1.9
+werkzeug==3.1.9
 wsproto==1.3.2
 yarl==1.25.1
+# Native desktop drivers are installed only on the user's Windows environment.
+pywinauto==0.6.9; sys_platform == 'win32'
+PyAutoGUI==0.9.54; sys_platform == 'win32'
+comtypes==1.4.17; sys_platform == 'win32'
+MouseInfo==0.1.3; sys_platform == 'win32'
+PyGetWindow==0.0.9; sys_platform == 'win32'
+PyMsgBox==2.0.1; sys_platform == 'win32'
+pyperclip==1.11.0; sys_platform == 'win32'
+PyRect==0.2.0; sys_platform == 'win32'
+PyScreeze==1.0.1; sys_platform == 'win32'
+pytweening==1.2.0; sys_platform == 'win32'
+pywin32==312; sys_platform == 'win32'
+six==1.17.0; sys_platform == 'win32'
