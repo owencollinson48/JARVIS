@@ -48,6 +48,9 @@ def initialize(path):
         if 'quota_reserved' not in {r[1] for r in db.execute('PRAGMA table_info(communication_jobs)')}:
             db.execute('ALTER TABLE communication_jobs ADD COLUMN quota_reserved INTEGER NOT NULL DEFAULT 0')
         db.execute("UPDATE communication_jobs SET status='unknown',result='Stale provider dispatch; not retried.' WHERE status='sending' AND (dispatch_started IS NULL OR dispatch_started<strftime('%s','now')-120)")
+        if 'allow_edit' not in {r[1] for r in db.execute('PRAGMA table_info(trusted_roots)')}:
+            db.execute('ALTER TABLE trusted_roots ADD COLUMN allow_edit INTEGER NOT NULL DEFAULT 0')
+        db.execute("CREATE TABLE IF NOT EXISTS file_revisions(id TEXT PRIMARY KEY,root TEXT NOT NULL,relative TEXT NOT NULL,path TEXT NOT NULL,original_hash TEXT NOT NULL,saved_hash TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'saved',created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
         columns = {row[1] for row in db.execute('PRAGMA table_info(messages)')}
         if 'source' not in columns:
             db.execute("ALTER TABLE messages ADD COLUMN source TEXT NOT NULL DEFAULT 'demo'")

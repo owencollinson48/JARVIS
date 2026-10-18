@@ -92,7 +92,7 @@ function localCommand(content){
  const command=content.trim().replace(/^jarvis[, ]+/i,'').trim().toLowerCase();
  const aliases={'/tasks':'tasks','show tasks':'tasks','open tasks':'tasks','/briefing':'briefing','daily briefing':'briefing','show briefing':'briefing','/memory':'memory','open memory':'memory','/projects':'projects','/university':'university','/work':'work','/reminders':'reminders','/settings':'settings','/history':'chat','/planning':'planning','/computer':'autonomy','/phone':'communications'};
  if(aliases[command]){navigate(aliases[command]);return `${panelNames[aliases[command]]} opened. This command ran locally.`;}
- if(command==='/help')return 'Local commands: /tasks, /university, /work, /projects, /briefing, /reminders, /history, /memory, /settings. /remember saves an explicit fact. Computer controls: open Spotify; next song; set volume to 40 percent; search the web for a topic; open an approved name. Apps/files/searches need confirm action. Playback/volume are immediate when enabled. Hands-free mode sends recognised phrases automatically using your paid chat API.';
+ if(command==='/help')return 'Local commands: /tasks, /university, /work, /projects, /briefing, /reminders, /history, /memory, /settings, /computer. /remember saves an explicit fact. Computer controls: open Spotify; next song; set volume to 40 percent; search the web for a topic; open an approved name. Opens follow saved approvals. Edit through Computer, or use replace text in docs:notes.txt | old | new, create text file docs:plan.md | content, create folder docs:Notes. Edits need confirmation. Open a website with open https://example.org or Windows themes with open windows themes. Playback/volume are immediate when enabled. Hands-free mode sends recognised phrases automatically using your paid chat API.';
  if(command==='what time is it' || command==='what time is it?')return window.JarvisHUD.clockText();
  if(command.startsWith('/') && !command.startsWith('/remember ') && command!=='/remember')return 'Unknown local command. Type /help to see the available commands.';
  return null;
@@ -140,6 +140,7 @@ async function sendMessage(input){
 $('chat-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('chat-input')));};
 $('command-form').onsubmit=event=>{event.preventDefault();action(()=>sendMessage($('command-input')));};
 $('settings-form').onsubmit=event=>{event.preventDefault();action(async()=>{await api('/api/settings','PUT',{name:$('display-name').value});await refresh();notify('Settings saved on this computer.');});};
+window.JarvisFiles.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.JarvisUpgrade.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.JarvisComputer.init({api,action,notify,command:content=>{if(sendingChat)return;$('command-input').value=content;action(()=>sendMessage($('command-input')));}});
 window.addEventListener('jarvis-voice-submit',event=>{if(sendingChat)return;$('command-input').value=event.detail;action(()=>sendMessage($('command-input')));});

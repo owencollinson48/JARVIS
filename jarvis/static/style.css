@@ -24,3 +24,5 @@ body.reduce-motion .ring,body.reduce-motion .voice-core{animation:none!important
 @media(max-width:650px){.masthead{flex-wrap:wrap}.masthead .brand{flex:1;min-width:170px}.masthead .danger{order:3;width:100%}.upgrade-form label{min-width:0;flex-basis:100%}.upgrade-form label:has(input[type=checkbox]){min-width:0}.upgrade-form input,.upgrade-form select,.upgrade-form textarea{min-width:0;max-width:100%}.upgrade-form fieldset{min-width:0}#log-search input{max-width:100%}}
 
 .masthead .danger{color:#ffb0a8;border-color:#b85f57;background:#28191c}#background-status,#approval-status,#contact-operational-status,#operation-status{font-size:.75rem;color:var(--muted,#9bb2b9)}
+
+.local-editor{display:block;width:100%;min-height:270px;box-sizing:border-box;resize:vertical;font-family:Consolas,monospace;tab-size:2}.windows-pages{display:flex;flex-wrap:wrap;gap:10px}#files-list{max-height:380px;overflow:auto}#common-location{max-width:100%}

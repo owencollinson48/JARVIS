@@ -23,6 +23,7 @@ def root_path(db,alias,relative='',permission=None):
     row=db.execute('SELECT * FROM trusted_roots WHERE alias=?',(alias,)).fetchone()
     if not row:raise ValueError('Approve this trusted folder first.')
     if permission and not row[permission]:raise ValueError('This folder does not grant that permission.')
+    if not isinstance(relative,str) or '\x00' in relative:raise ValueError('Use a valid relative path inside the approved folder.')
     root=Path(row['path']);value=Path(relative)
     if value.is_absolute() or '..' in value.parts:raise ValueError('Use a relative path inside the trusted folder.')
     path=(root/value).resolve(strict=True)
@@ -102,10 +103,11 @@ def add_root():
     if not isinstance(raw,str) or raw.startswith(('\\\\','//')):raise ValueError('Choose a local folder, not a network share.')
     path=Path(raw.strip().strip('"'))
     if not path.is_absolute() or not path.is_dir():raise ValueError('Choose an existing absolute folder path.')
+    if type(data.get('allow_edit',False)) is not bool:raise ValueError('Choose text editing permission.')
     if any(type(data.get(k)) is not bool for k in ('allow_read','allow_move')):raise ValueError('Explicitly choose read and move permissions.')
     with connect() as db:
         db.execute("UPDATE computer_actions SET status='cancelled' WHERE status='pending'")
-        db.execute('INSERT INTO trusted_roots VALUES(?,?,?,?) ON CONFLICT(alias) DO UPDATE SET path=excluded.path,allow_read=excluded.allow_read,allow_move=excluded.allow_move',(alias,str(path.resolve()),data['allow_read'],data['allow_move']))
+        db.execute('INSERT INTO trusted_roots(alias,path,allow_read,allow_move,allow_edit) VALUES(?,?,?,?,?) ON CONFLICT(alias) DO UPDATE SET path=excluded.path,allow_read=excluded.allow_read,allow_move=excluded.allow_move,allow_edit=excluded.allow_edit',(alias,str(path.resolve()),data['allow_read'],data['allow_move'],data.get('allow_edit',False)))
     return jsonify(ok=True)
 
 
@@ -147,9 +149,9 @@ def preview_file():
     data=request.get_json(silent=True) or {};kind=data.get('kind');alias=data.get('root');relative=data.get('relative','')
     with connect() as db:
         _,path=root_path(db,alias,relative,'allow_move' if kind=='move' else None)
-        if not path.is_file():raise ValueError('Select a file.')
+        if not (path.is_file() or kind=='open' and path.is_dir()):raise ValueError('Select a file or a folder to open.')
         if kind=='open':
-            if path.suffix.lower() not in computer.FILE_TYPES:raise ValueError('Only supported documents/media can be opened from trusted roots.')
+            if not path.is_dir() and path.suffix.lower() not in computer.FILE_TYPES:raise ValueError('Only supported documents/media can be opened from trusted roots.')
             payload=dict(kind='root_open',root=alias,relative=relative)
         elif kind=='move':
             dest=data.get('destination')

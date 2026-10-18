@@ -9,6 +9,8 @@ window.JarvisComputer = (() => {
     get('approval-status').textContent=selected?'Waiting for your approval: '+selected.preview:'No computer action awaiting approval';
     get('computer-preview').hidden=!selected;
     get('computer-preview-text').textContent=selected?.preview||'';
+    get('computer-file-diff').hidden=true;
+    if(selected){const token=selected.id;hooks.api('/api/files/previews/'+encodeURIComponent(token)).then(data=>{if(selected?.id!==token)return;get('computer-file-diff').textContent=data.diff;get('computer-file-diff').hidden=!data.diff;}).catch(error=>{if(selected?.id===token){get('computer-file-diff').textContent=error.message;get('computer-file-diff').hidden=false;}});}
     get('computer-enabled').checked=data.enabled;
     get('computer-enabled').disabled=!data.supported;
     get('computer-platform').textContent=data.supported ? `Windows controls ${data.enabled?'enabled':'off'}. Playback and volume are immediate; other commands follow your saved approval rules.` : 'This running machine is not Windows. Configure and test computer controls on your Windows PC.';

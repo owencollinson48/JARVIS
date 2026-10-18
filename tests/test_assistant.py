@@ -1,5 +1,6 @@
 """Offline integration tests. Mock HTTP transport exercises the actual OpenAI SDK."""
 import json
+from contextlib import closing
 import os
 import sqlite3
 import tempfile
@@ -204,7 +205,7 @@ class MigrationTests(unittest.TestCase):
     def test_existing_milestone_one_database_is_preserved(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'existing.db'
-            with sqlite3.connect(path) as db:
+            with closing(sqlite3.connect(path)) as db:
                 db.executescript('''
                 CREATE TABLE tasks(id INTEGER PRIMARY KEY,title TEXT NOT NULL,due TEXT NOT NULL,priority TEXT NOT NULL,project TEXT NOT NULL,completed INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE messages(id INTEGER PRIMARY KEY,role TEXT NOT NULL,content TEXT NOT NULL);

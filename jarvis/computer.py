@@ -34,10 +34,10 @@ def state(db):
                 pending=pending(db), recent=[dict(row) for row in db.execute('SELECT id,preview,status,result FROM computer_actions WHERE preview LIKE ? ORDER BY created DESC LIMIT 100',('%'+request.args.get('q','')[:100]+'%',))])
 
 
-def normalize(content):
-    value = content.strip().rstrip('.!?').strip()
+def normalize(content, literal=False):
+    value = content.strip() if literal else content.strip().rstrip('.!?').strip()
     value = re.sub(r'^(?:jarvis[, ]+)?(?:(?:could|can|would) you (?:please )?|please )?', '', value, flags=re.I)
-    value = re.sub(r' please$', '', value, flags=re.I)
+    if not literal:value = re.sub(r' please$', '', value, flags=re.I)
     return value
 
 
@@ -67,6 +67,20 @@ def parse(content):
     match = re.fullmatch(r'(?:search (?:the )?(?:internet|web|browser)(?: for)?|search for|google) (.+)', value, flags=re.I)
     if match:
         return dict(kind='search', query=match[1].strip()[:300])
+    match = re.fullmatch(r'replace text in ([a-z][a-z0-9 ]{0,39}):(.+?) \| (.*?) \| (.*)',normalize(content,literal=True),flags=re.I|re.S)
+    if match:return dict(kind='replace_text',root=match[1].lower(),relative=match[2],old=match[3],new=match[4])
+    match = re.fullmatch(r'create text file ([a-z][a-z0-9 ]{0,39}):(.+?) \| (.*)',normalize(content,literal=True),flags=re.I|re.S)
+    if match:return dict(kind='create_text',root=match[1].lower(),relative=match[2],content=match[3])
+    match = re.fullmatch(r'create folder ([a-z][a-z0-9 ]{0,39}):(.+)',value,flags=re.I)
+    if match:return dict(kind='create_directory',root=match[1].lower(),relative=match[2])
+    match = re.fullmatch(r'(?:open|visit|go to) (https?://.+)',value,flags=re.I)
+    if match:
+        try:return dict(kind='navigate',url=windows.website(match[1]))
+        except ValueError as error:return dict(kind='invalid',error=str(error))
+    match = re.fullmatch(r'open windows (themes|background|display|sound|bluetooth|apps)',lower)
+    if match:return dict(kind='settings',page=match[1])
+    match = re.fullmatch(r'(?:open file|open folder) ([a-z][a-z0-9 ]{0,39}):(.*)',value,flags=re.I)
+    if match:return dict(kind='root_open',root=match[1].lower(),relative=match[2].strip())
     match = re.fullmatch(r'(?:open|launch) (.+)', value, flags=re.I)
     if match:
         alias = re.sub(r'^(?:my |the )', '', match[1].lower()).strip()
@@ -104,14 +118,17 @@ def run(action_id):
             return dict(ok=False, reply=str(error))
         db.execute("UPDATE computer_actions SET status='executing' WHERE id=?", (action_id,))
     try:
-        if action['kind'] in ('root_open','move'):
+        if action['kind'] in ('text_edit','text_create','folder_create','text_restore'):
+            from . import files
+            with connect() as db:result=files.execute(db,action)
+        elif action['kind'] in ('root_open','move'):
             from . import workspace
             with connect() as db:
                 if action['kind']=='move':result=workspace.move(db,action)
                 else:
                     _,path=workspace.root_path(db,action['root'],action['relative'])
-                    if path.suffix.lower() not in FILE_TYPES:raise ValueError('Unsupported file type.')
-                    result=windows.execute({'kind':'open','alias':path.name},{'kind':'file','path':str(path)})
+                    if not path.is_dir() and path.suffix.lower() not in FILE_TYPES:raise ValueError('Unsupported file type.')
+                    result=windows.execute({'kind':'open','alias':path.name},{'kind':'folder' if path.is_dir() else 'file','path':str(path)})
         elif action['kind']=='workflow':
             with connect() as db:workflow=db.execute('SELECT steps FROM workflows WHERE name=?',(action['name'],)).fetchone()
             if not workflow:raise ValueError('Workflow removed.')
@@ -124,8 +141,9 @@ def run(action_id):
             result='Workflow finished: '+' '.join(results)
         else:result = windows.execute(action, target)
         status = 'executed'
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as error:
         result = 'Windows could not complete the approved action. Check that the app or file exists and is accessible. No automatic retry was made.'
+        if action['kind'] in ('text_edit','text_create','folder_create','text_restore') and isinstance(error,ValueError):result=str(error)
         status = 'failed'
     except Exception:
         result = 'Windows returned an unexpected error. The outcome is unknown; check the application before repeating the request. No retry was made.'
@@ -153,6 +171,13 @@ def handle(content, action_id=None):
         return None
     if action['kind'] == 'invalid':
         return dict(ok=True, local=True, reply=action['error'])
+    if action['kind'] in ('replace_text','create_text','create_directory'):
+        with connect() as db:
+            if not windows.supported() or not enabled(db):return dict(ok=True,local=True,reply='Enable Windows computer controls before changing local files.')
+        from . import files
+        try:prepared=files.command_preview(action)
+        except (ValueError,OSError) as error:return dict(ok=True,local=True,reply=str(error))
+        return dict(ok=True,local=True,reply=prepared['action']['preview']+'. Review the preview and confirm action to apply.',action=prepared['action'])
     with connect() as db:
         if not windows.supported():
             return dict(ok=True, local=True, reply='Computer controls require JARVIS running on your Windows PC. This machine cannot execute them.')
@@ -170,6 +195,17 @@ def handle(content, action_id=None):
                 return dict(ok=True, local=True, reply=str(error))
             preapproved=bool(db.execute("SELECT 1 FROM settings WHERE key='auto_open' AND value='1'").fetchone())
             preview = f"Open approved target: {action['alias']}"
+        elif action['kind']=='root_open':
+            from . import workspace
+            try:
+                _,path=workspace.root_path(db,action['root'],action['relative'])
+                if not path.is_dir() and path.suffix.lower() not in FILE_TYPES:raise ValueError('Unsupported file type; approve executable apps separately in Settings.')
+            except (ValueError,OSError) as error:return dict(ok=True,local=True,reply=str(error))
+            preview='Open approved folder item: '+action['root']+':'+action['relative']
+            preapproved=bool(db.execute("SELECT 1 FROM settings WHERE key='auto_open' AND value='1'").fetchone())
+        elif action['kind'] in ('navigate','settings'):
+            preview='Visit website: '+action['url'] if action['kind']=='navigate' else 'Open Windows settings: '+action['page']
+            preapproved=bool(db.execute("SELECT 1 FROM settings WHERE key='auto_open' AND value='1'").fetchone())
         elif action['kind'] == 'search':
             preapproved=bool(db.execute("SELECT 1 FROM settings WHERE key='auto_open' AND value='1'").fetchone())
             preview = 'Search Google in your default browser for: '+action['query']

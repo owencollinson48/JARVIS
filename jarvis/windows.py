@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import uuid
 import webbrowser
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 
 def supported():
@@ -84,6 +84,24 @@ def _media(command):
         raise OSError('Windows did not accept the media command.')
 
 
+SETTINGS_PAGES = {'themes':'ms-settings:themes', 'background':'ms-settings:personalization-background',
+                  'display':'ms-settings:display', 'sound':'ms-settings:sound',
+                  'bluetooth':'ms-settings:bluetooth', 'apps':'ms-settings:appsfeatures'}
+
+
+def website(value):
+    if not isinstance(value,str) or len(value)>2000 or any(ord(c)<33 for c in value) or '\\' in value:
+        raise ValueError('Enter an HTTP or HTTPS website address without spaces.')
+    try:
+        parsed=urlsplit(value)
+        if parsed.scheme not in ('https','http') or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError('Only HTTP/HTTPS websites without embedded credentials can be opened.')
+        parsed.port
+    except (ValueError,UnicodeError):
+        raise ValueError('Enter a valid HTTP/HTTPS website address without embedded credentials.') from None
+    return value
+
+
 def execute(action, target=None):
     if not supported():
         raise OSError('Computer controls require the Windows copy of JARVIS.')
@@ -95,6 +113,14 @@ def execute(action, target=None):
         _media(action['command'])
         label = {'next':'Next track', 'previous':'Previous track', 'play_pause':'Play/pause'}[action['command']]
         return f'{label} sent to Windows’s active media player. Playback and song title are not verified.'
+    if kind == 'navigate':
+        if not webbrowser.open(website(action['url']),new=2):raise OSError('Windows could not open the browser.')
+        return 'Windows accepted the website request. Page loading, clicks and signed-in account access are not verified.'
+    if kind == 'settings':
+        page=SETTINGS_PAGES.get(action.get('page'))
+        if not page:raise ValueError('Unsupported Windows settings page.')
+        os.startfile(page)
+        return 'Windows settings page opened. No settings were changed automatically.'
     if kind == 'search':
         if not webbrowser.open('https://www.google.com/search?q='+quote(action['query'], safe=''), new=2):
             raise OSError('Windows could not open the default browser.')

@@ -10,7 +10,7 @@ from .assistant import bp as assistant_blueprint
 from .computer import bp as computer_blueprint
 from .planning import bp as planning_blueprint
 from .communications import bp as communications_blueprint, public as telephony_blueprint
-from . import relay, communications, realtime
+from . import relay, communications, realtime, files
 from .workspace import bp as workspace_blueprint
 
 PROJECTS = ['University', 'Personal Life', 'Collinson Creative']
@@ -28,6 +28,7 @@ def create_app(database=None):
     app.register_blueprint(planning_blueprint)
     app.register_blueprint(communications_blueprint)
     app.register_blueprint(workspace_blueprint)
+    app.register_blueprint(files.bp)
     app.register_blueprint(realtime.bp)
     app.register_blueprint(telephony_blueprint)
     relay.register(app)

@@ -1,5 +1,7 @@
 # JARVIS — personal command centre
 
+**Computer access update:** [Windows instructions for drive access, file editing/backups/undo and customisation](docs/COMPUTER_ACCESS.md). Uses the existing programs and dependencies. New edit permissions start off; folders or whole drives can be approved explicitly.
+
 JARVIS 2.0 adds saved schedules, proactive notices, editable shared memory, trusted file workflows, optional paid interruptible voice, and a separate signed SMS/phone gateway. **Existing tasks and the animated HUD are preserved.** Start with [the Windows upgrade and communication guide](docs/COMMUNICATIONS.md). Paid features remain off until configured and explicitly enabled.
 
 The existing JARVIS application now has an **animated voice-first HUD** around its OpenAI chat, explicit memory and persistent tasks. Built with Python, Flask, vanilla JavaScript and SQLite. The dashboard, tasks, projects, local briefing and profile work without an API key. Real AI chat requires internet access, an OpenAI API key and API billing.
